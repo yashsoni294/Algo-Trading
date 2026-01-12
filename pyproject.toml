@@ -1,0 +1,12 @@
+[project]
+name = "algo-trading"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "apscheduler>=3.11.2",
+    "metatrader5>=5.0.5430",
+    "pandas>=2.3.3",
+    "schedule>=1.2.2",
+]
