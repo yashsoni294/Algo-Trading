@@ -24,7 +24,7 @@ def connect_mt5(portable=True):
         # mt5_path = os.getenv('MT5_PATH', mt5_path)
         
         if not os.path.exists(mt5_path):
-            print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
+            #print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
             portable = False
     
     if portable:
@@ -49,17 +49,19 @@ def connect_mt5(portable=True):
     
     account_info = mt5.account_info()
     if account_info:
-        print("✓ Connected to MT5")
-        print(f"  Account: {account_info.login}")
-        print(f"  Balance: ${account_info.balance}")
-        print(f"  Leverage: 1:{account_info.leverage}")
+        #print("✓ Connected to MT5")
+        #print(f"  Account: {account_info.login}")
+        #print(f"  Balance: ${account_info.balance}")
+        #print(f"  Leverage: 1:{account_info.leverage}")
+        pass
     else:
-        print("✓ Connected to MT5")
+        #print("✓ Connected to MT5")
+        pass
 
 
 def shutdown_mt5():
     mt5.shutdown()
-    print("MT5 disconnected")
+    #print("MT5 disconnected")
 
 
 def get_candle_data(symbol="EURUSD", timeframe=mt5.TIMEFRAME_M5, n=100):
@@ -125,10 +127,12 @@ def detect_ema_crossover(df, rsi_threshold_bullish=60, rsi_threshold_bearish=40)
     
     # Check if crossover occurred but RSI filter not met
     if prev['ema_21'] <= prev['ema_51'] and curr['ema_21'] > curr['ema_51']:
-        print(f"  ℹ Bullish crossover detected but RSI {curr['rsi']:.2f} < {rsi_threshold_bullish} (rejected)")
+        #print(f"  ℹ Bullish crossover detected but RSI {curr['rsi']:.2f} < {rsi_threshold_bullish} (rejected)")
+        pass
     
     if prev['ema_21'] >= prev['ema_51'] and curr['ema_21'] < curr['ema_51']:
-        print(f"  ℹ Bearish crossover detected but RSI {curr['rsi']:.2f} > {rsi_threshold_bearish} (rejected)")
+        #print(f"  ℹ Bearish crossover detected but RSI {curr['rsi']:.2f} > {rsi_threshold_bearish} (rejected)")
+        pass
     
     return "neutral", curr, df
 
@@ -161,23 +165,23 @@ def place_ema_trade(symbol, signal, curr_candle, df, risk_amount=5.0, reward_amo
         reward_amount: Dollar amount target profit per trade (default: $10)
     """
     if signal not in ["bullish", "bearish"]:
-        print("No trade signal (neutral) — skipping trade.")
+        #print("No trade signal (neutral) — skipping trade.")
         return
 
     # Get symbol info
     symbol_info = mt5.symbol_info(symbol)
     if symbol_info is None:
-        print(f"Failed to get symbol info for {symbol}")
+        #print(f"Failed to get symbol info for {symbol}")
         return
     
     if not symbol_info.visible:
         if not mt5.symbol_select(symbol, True):
-            print(f"Failed to add {symbol} to Market Watch")
+            #print(f"Failed to add {symbol} to Market Watch")
             return
 
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
-        print(f"Failed to get tick for {symbol}")
+        #print(f"Failed to get tick for {symbol}")
         return
     
     # Entry price
@@ -189,7 +193,7 @@ def place_ema_trade(symbol, signal, curr_candle, df, risk_amount=5.0, reward_amo
     current_atr = curr_candle['atr'] if 'atr' in curr_candle else df['atr'].iloc[-1]
     
     if pd.isna(current_atr) or current_atr <= 0:
-        print(f"⚠ Invalid ATR value: {current_atr}, cannot place trade")
+        #print(f"⚠ Invalid ATR value: {current_atr}, cannot place trade")
         return
     
     # ATR buffer (1.5 × ATR)
@@ -209,11 +213,11 @@ def place_ema_trade(symbol, signal, curr_candle, df, risk_amount=5.0, reward_amo
     # Validate SL
     if signal == "bullish":
         if sl >= price:
-            print("ERROR: Invalid stop loss for bullish trade (SL >= Entry)")
+            #print("ERROR: Invalid stop loss for bullish trade (SL >= Entry)")
             return
     else:
         if sl <= price:
-            print("ERROR: Invalid stop loss for bearish trade (SL <= Entry)")
+            #print("ERROR: Invalid stop loss for bearish trade (SL <= Entry)")
             return
     
     # Get contract size and point value
@@ -254,7 +258,7 @@ def place_ema_trade(symbol, signal, curr_candle, df, risk_amount=5.0, reward_amo
     if sl_dist_pips > 0 and pip_value_per_lot > 0:
         lot_size = risk_amount / (sl_dist_pips * pip_value_per_lot)
     else:
-        print(f"⚠ Invalid calculation: SL pips={sl_dist_pips}, pip_value={pip_value_per_lot}")
+        #print(f"⚠ Invalid calculation: SL pips={sl_dist_pips}, pip_value={pip_value_per_lot}")
         return
     
     # Round to broker's volume step (usually 0.01)
@@ -263,10 +267,10 @@ def place_ema_trade(symbol, signal, curr_candle, df, risk_amount=5.0, reward_amo
     
     # Apply min/max lot size limits
     if lot_size < symbol_info.volume_min:
-        print(f"⚠ Calculated lot size {lot_size:.2f} is below minimum {symbol_info.volume_min}")
+        #print(f"⚠ Calculated lot size {lot_size:.2f} is below minimum {symbol_info.volume_min}")
         lot_size = symbol_info.volume_min
     elif lot_size > symbol_info.volume_max:
-        print(f"⚠ Calculated lot size {lot_size:.2f} exceeds maximum {symbol_info.volume_max}")
+        #print(f"⚠ Calculated lot size {lot_size:.2f} exceeds maximum {symbol_info.volume_max}")
         lot_size = symbol_info.volume_max
     
     # Calculate TP based on reward amount
@@ -283,35 +287,35 @@ def place_ema_trade(symbol, signal, curr_candle, df, risk_amount=5.0, reward_amo
     # Validate TP
     if signal == "bullish":
         if tp <= price:
-            print("ERROR: Invalid take profit for bullish trade")
+            #print("ERROR: Invalid take profit for bullish trade")
             return
     else:
         if tp >= price:
-            print("ERROR: Invalid take profit for bearish trade")
+            #print("ERROR: Invalid take profit for bearish trade")
             return
     
     # Calculate actual risk/reward in dollars
     actual_risk = lot_size * sl_dist_pips * pip_value_per_lot
     actual_reward = lot_size * tp_dist_pips * pip_value_per_lot
     
-    print(f"\n{'='*70}")
-    print(f"TRADE SETUP - {symbol}")
-    print(f"{'='*70}")
-    print(f"Signal: {signal.upper()}")
-    print(f"Entry Price: {price:.5f}")
-    print(f"Stop Loss: {sl:.5f} (Distance: {sl_dist_pips:.1f} pips)")
-    print(f"Take Profit: {tp:.5f} (Distance: {tp_dist_pips:.1f} pips)")
-    print(f"")
-    print(f"Position Size: {lot_size:.2f} lots")
-    print(f"Contract Size: {contract_size:,.0f}")
-    print(f"Pip Value/Lot: ${pip_value_per_lot:.2f}")
-    print(f"")
-    print(f"Expected RISK: ${actual_risk:.2f} (Target: ${risk_amount:.2f})")
-    print(f"Expected REWARD: ${actual_reward:.2f} (Target: ${reward_amount:.2f})")
-    print(f"Risk/Reward Ratio: 1:{actual_reward/actual_risk:.2f}")
-    print(f"")
-    print(f"ATR(14): {current_atr:.5f} | ATR Buffer (1.5×): {atr_buffer:.5f}")
-    print(f"{'='*70}\n")
+    #print(f"\n{'='*70}")
+    #print(f"TRADE SETUP - {symbol}")
+    #print(f"{'='*70}")
+    #print(f"Signal: {signal.upper()}")
+    #print(f"Entry Price: {price:.5f}")
+    #print(f"Stop Loss: {sl:.5f} (Distance: {sl_dist_pips:.1f} pips)")
+    #print(f"Take Profit: {tp:.5f} (Distance: {tp_dist_pips:.1f} pips)")
+    #print(f"")
+    #print(f"Position Size: {lot_size:.2f} lots")
+    #print(f"Contract Size: {contract_size:,.0f}")
+    #print(f"Pip Value/Lot: ${pip_value_per_lot:.2f}")
+    #print(f"")
+    #print(f"Expected RISK: ${actual_risk:.2f} (Target: ${risk_amount:.2f})")
+    #print(f"Expected REWARD: ${actual_reward:.2f} (Target: ${reward_amount:.2f})")
+    #print(f"Risk/Reward Ratio: 1:{actual_reward/actual_risk:.2f}")
+    #print(f"")
+    #print(f"ATR(14): {current_atr:.5f} | ATR Buffer (1.5×): {atr_buffer:.5f}")
+    #print(f"{'='*70}\n")
 
     # Try different filling modes
     filling_modes = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK]
@@ -337,25 +341,25 @@ def place_ema_trade(symbol, signal, curr_candle, df, risk_amount=5.0, reward_amo
         # Check if result is None
         if result is None:
             error = mt5.last_error()
-            print(f"✗ Order send failed (returned None) with {filling_type}")
-            print(f"  MT5 Error: {error}")
+            #print(f"✗ Order send failed (returned None) with {filling_type}")
+            #print(f"  MT5 Error: {error}")
             continue
         
         if result.retcode == mt5.TRADE_RETCODE_DONE:
-            print(f"✓ {signal.upper()} trade placed successfully!")
-            print(f"  Order Ticket: {result.order}")
-            print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-            print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-            print(f"  RSI: {curr_candle['rsi']:.2f}")
+            #print(f"✓ {signal.upper()} trade placed successfully!")
+            #print(f"  Order Ticket: {result.order}")
+            #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+            #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+            #print(f"  RSI: {curr_candle['rsi']:.2f}")
             return
         elif result.retcode == 10018:
-            print(f"✗ Market is closed for {symbol}")
+            #print(f"✗ Market is closed for {symbol}")
             return
         elif result.retcode != 10030:
-            print(f"✗ Order failed: {result.retcode} - {result.comment}")
+            #print(f"✗ Order failed: {result.retcode} - {result.comment}")
             return
     
-    print(f"✗ Order failed with all filling modes.")
+    #print(f"✗ Order failed with all filling modes.")
 
 
 def is_market_open(symbol: str) -> bool:
@@ -406,28 +410,28 @@ def run_ema_strategy(symbol, timeframe=mt5.TIMEFRAME_M5, risk_per_trade=5.0, rew
     
     # Check for existing position
     if check_existing_position(symbol):
-        print(f"[{symbol}] Already have open position - skipping")
+        #print(f"[{symbol}] Already have open position - skipping")
         return
     
     # Get data
     df = get_candle_data(symbol, timeframe, n=100)
     if df is None or len(df) < 52:
-        print(f"[{symbol}] Insufficient data")
+        #print(f"[{symbol}] Insufficient data")
         return
     
     # Detect signal (with RSI filter)
     signal, curr_candle, df_with_emas = detect_ema_crossover(df)
     
     if signal == "neutral":
-        print(f"[{symbol}] No valid signal")
+        #print(f"[{symbol}] No valid signal")
         return
     
-    print(f"\n[{symbol}] 🎯 {signal.upper()} CROSSOVER DETECTED (RSI CONFIRMED)!")
-    print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-    print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-    print(f"  RSI: {curr_candle['rsi']:.2f}")
-    print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
-          f"L={curr_candle['low']:.5f}, C={curr_candle['close']:.5f}")
+    #print(f"\n[{symbol}] 🎯 {signal.upper()} CROSSOVER DETECTED (RSI CONFIRMED)!")
+    #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+    #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+    #print(f"  RSI: {curr_candle['rsi']:.2f}")
+    #print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
+    # f"L={curr_candle['low']:.5f}, C={curr_candle['close']:.5f}")
     
     # Place trade with risk-based position sizing
     place_ema_trade(symbol, signal, curr_candle, df_with_emas, 
@@ -440,12 +444,12 @@ def scan_markets():
     This function is called by the scheduler.
     """
     current_time = datetime.now()
-    print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
+    #print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
     
     for pair in currency_pair_list:
         try:
             if not is_market_open(pair):
-                print(f"[{pair}] Market not open - skipping")
+                #print(f"[{pair}] Market not open - skipping")
                 continue
             
             # Get current candle time
@@ -461,12 +465,12 @@ def scan_markets():
                     last_check[pair] = current_candle_time
             
         except Exception as e:
-            print(f"[{pair}] Error: {e}")
+            #print(f"[{pair}] Error: {e}")
             import traceback
-            traceback.print_exc()
+            # traceback.#print_exc()
             continue
     
-    print("\n" + "-" * 100)
+    #print("\n" + "-" * 100)
 
 
 # ===================== MAIN EXECUTION =====================
@@ -479,16 +483,16 @@ REWARD_PER_TRADE = 10  # dollars (1:2 risk/reward)
 currency_pair_list = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "USDCAD"]
 last_check = {}  # Track last candle time to avoid duplicate signals (global for scheduler)
 
-print("=" * 70)
-print("EMA CROSSOVER + RSI FILTER STRATEGY (RISK-BASED POSITION SIZING)")
-print("=" * 70)
-print(f"Account Balance: ${ACCOUNT_BALANCE}")
-print(f"Risk per Trade: ${RISK_PER_TRADE} ({RISK_PER_TRADE/ACCOUNT_BALANCE*100:.1f}% of balance)")
-print(f"Reward per Trade: ${REWARD_PER_TRADE} (1:{REWARD_PER_TRADE/RISK_PER_TRADE:.0f} R/R)")
-print(f"Strategy: 21/51 EMA on 5-Min Chart + RSI(14)")
-print(f"Entry: Bullish (RSI >= 60) | Bearish (RSI <= 40)")
-print(f"Stop Loss: Candle High/Low +/- 1.5× ATR(14)")
-print("=" * 70)
+#print("=" * 70)
+#print("EMA CROSSOVER + RSI FILTER STRATEGY (RISK-BASED POSITION SIZING)")
+#print("=" * 70)
+#print(f"Account Balance: ${ACCOUNT_BALANCE}")
+#print(f"Risk per Trade: ${RISK_PER_TRADE} ({RISK_PER_TRADE/ACCOUNT_BALANCE*100:.1f}% of balance)")
+#print(f"Reward per Trade: ${REWARD_PER_TRADE} (1:{REWARD_PER_TRADE/RISK_PER_TRADE:.0f} R/R)")
+#print(f"Strategy: 21/51 EMA on 5-Min Chart + RSI(14)")
+#print(f"Entry: Bullish (RSI >= 60) | Bearish (RSI <= 40)")
+#print(f"Stop Loss: Candle High/Low +/- 1.5× ATR(14)")
+#print("=" * 70)
 
 connect_mt5(portable=True)  # Use portable=False if path issues
 
@@ -507,16 +511,16 @@ scheduler.add_job(
     max_instances=1  # Prevent overlapping executions
 )
 
-print("\n✓ Scheduler initialized")
-print("  Job: Scan markets every minute")
-print("  Press Ctrl+C to stop\n")
+#print("\n✓ Scheduler initialized")
+#print("  Job: Scan markets every minute")
+#print("  Press Ctrl+C to stop\n")
 
 try:
     # Start the scheduler (blocking)
     scheduler.start()
 
 except (KeyboardInterrupt, SystemExit):
-    print("\n\nStopping strategy...")
+    #print("\n\nStopping strategy...")
     scheduler.shutdown()
 
 finally:
@@ -547,7 +551,7 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 #         # mt5_path = os.getenv('MT5_PATH', mt5_path)
         
 #         if not os.path.exists(mt5_path):
-#             print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
+#             #print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
 #             portable = False
     
 #     if portable:
@@ -572,17 +576,17 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
     
 #     account_info = mt5.account_info()
 #     if account_info:
-#         print("Connected to MT5")
-#         print(f"Account: {account_info.login}")
-#         print(f"Balance: ${account_info.balance}")
-#         print(f"Leverage: 1:{account_info.leverage}")
+#         #print("Connected to MT5")
+#         #print(f"Account: {account_info.login}")
+#         #print(f"Balance: ${account_info.balance}")
+#         #print(f"Leverage: 1:{account_info.leverage}")
 #     else:
-#         print("Connected to MT5")
+#         #print("Connected to MT5")
 
 
 # def shutdown_mt5():
 #     mt5.shutdown()
-#     print("MT5 disconnected")
+#     #print("MT5 disconnected")
 
 
 # def get_candle_data(symbol="EURUSD", timeframe=mt5.TIMEFRAME_M5, n=100):
@@ -648,10 +652,10 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
     
 #     # Check if crossover occurred but RSI filter not met
 #     if prev['ema_21'] <= prev['ema_51'] and curr['ema_21'] > curr['ema_51']:
-#         print(f"Bullish crossover detected but RSI {curr['rsi']:.2f} < {rsi_threshold_bullish} (rejected)")
+#         #print(f"Bullish crossover detected but RSI {curr['rsi']:.2f} < {rsi_threshold_bullish} (rejected)")
     
 #     if prev['ema_21'] >= prev['ema_51'] and curr['ema_21'] < curr['ema_51']:
-#         print(f"Bearish crossover detected but RSI {curr['rsi']:.2f} > {rsi_threshold_bearish} (rejected)")
+#         #print(f"Bearish crossover detected but RSI {curr['rsi']:.2f} > {rsi_threshold_bearish} (rejected)")
     
 #     return "neutral", curr, df
 
@@ -685,23 +689,23 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 #         reward_amount: Dollar amount target profit per trade (default: $10)
 #     """
 #     if signal not in ["bullish", "bearish"]:
-#         print("No trade signal (neutral) — skipping trade.")
+#         #print("No trade signal (neutral) — skipping trade.")
 #         return
 
 #     # Get symbol info
 #     symbol_info = mt5.symbol_info(symbol)
 #     if symbol_info is None:
-#         print(f"Failed to get symbol info for {symbol}")
+#         #print(f"Failed to get symbol info for {symbol}")
 #         return
     
 #     if not symbol_info.visible:
 #         if not mt5.symbol_select(symbol, True):
-#             print(f"Failed to add {symbol} to Market Watch")
+#             #print(f"Failed to add {symbol} to Market Watch")
 #             return
 
 #     tick = mt5.symbol_info_tick(symbol)
 #     if tick is None:
-#         print(f"Failed to get tick for {symbol}")
+#         #print(f"Failed to get tick for {symbol}")
 #         return
     
 #     # Entry price
@@ -713,7 +717,7 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 #     current_atr = curr_candle['atr'] if 'atr' in curr_candle else df['atr'].iloc[-1]
     
 #     if pd.isna(current_atr) or current_atr <= 0:
-#         print(f"Invalid ATR value: {current_atr}, cannot place trade")
+#         #print(f"Invalid ATR value: {current_atr}, cannot place trade")
 #         return
     
 #     # ATR buffer (1.5 × ATR)
@@ -733,11 +737,11 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 #     # Validate SL
 #     if signal == "bullish":
 #         if sl >= price:
-#             print("ERROR: Invalid stop loss for bullish trade (SL >= Entry)")
+#             #print("ERROR: Invalid stop loss for bullish trade (SL >= Entry)")
 #             return
 #     else:
 #         if sl <= price:
-#             print("ERROR: Invalid stop loss for bearish trade (SL <= Entry)")
+#             #print("ERROR: Invalid stop loss for bearish trade (SL <= Entry)")
 #             return
     
 #     # Get contract size and point value
@@ -778,7 +782,7 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 #     if sl_dist_pips > 0 and pip_value_per_lot > 0:
 #         lot_size = risk_amount / (sl_dist_pips * pip_value_per_lot)
 #     else:
-#         print(f"Invalid calculation: SL pips={sl_dist_pips}, pip_value={pip_value_per_lot}")
+#         #print(f"Invalid calculation: SL pips={sl_dist_pips}, pip_value={pip_value_per_lot}")
 #         return
     
 #     # Round to broker's volume step (usually 0.01)
@@ -787,10 +791,10 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
     
 #     # Apply min/max lot size limits
 #     if lot_size < symbol_info.volume_min:
-#         print(f"Calculated lot size {lot_size:.2f} is below minimum {symbol_info.volume_min}")
+#         #print(f"Calculated lot size {lot_size:.2f} is below minimum {symbol_info.volume_min}")
 #         lot_size = symbol_info.volume_min
 #     elif lot_size > symbol_info.volume_max:
-#         print(f"Calculated lot size {lot_size:.2f} exceeds maximum {symbol_info.volume_max}")
+#         #print(f"Calculated lot size {lot_size:.2f} exceeds maximum {symbol_info.volume_max}")
 #         lot_size = symbol_info.volume_max
     
 #     # Calculate TP based on reward amount
@@ -807,32 +811,32 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 #     # Validate TP
 #     if signal == "bullish":
 #         if tp <= price:
-#             print("ERROR: Invalid take profit for bullish trade")
+#             #print("ERROR: Invalid take profit for bullish trade")
 #             return
 #     else:
 #         if tp >= price:
-#             print("ERROR: Invalid take profit for bearish trade")
+#             #print("ERROR: Invalid take profit for bearish trade")
 #             return
     
 #     # Calculate actual risk/reward in dollars
 #     actual_risk = lot_size * sl_dist_pips * pip_value_per_lot
 #     actual_reward = lot_size * tp_dist_pips * pip_value_per_lot
     
-#     print(f"\n{'='*70}")
-#     print(f"TRADE SETUP - {symbol}")
-#     print(f"{'='*70}")
-#     print(f"Signal: {signal.upper()}")
-#     print(f"Entry Price: {price:.5f}")
-#     print(f"Stop Loss: {sl:.5f} (Distance: {sl_dist_pips:.1f} pips)")
-#     print(f"Take Profit: {tp:.5f} (Distance: {tp_dist_pips:.1f} pips)")
-#     print(f"Position Size: {lot_size:.2f} lots")
-#     print(f"Contract Size: {contract_size:,.0f}")
-#     print(f"Pip Value/Lot: ${pip_value_per_lot:.2f}")
-#     print(f"Expected RISK: ${actual_risk:.2f} (Target: ${risk_amount:.2f})")
-#     print(f"Expected REWARD: ${actual_reward:.2f} (Target: ${reward_amount:.2f})")
-#     print(f"Risk/Reward Ratio: 1:{actual_reward/actual_risk:.2f}")
-#     print(f"ATR(14): {current_atr:.5f} | ATR Buffer (1.5×): {atr_buffer:.5f}")
-#     print(f"{'='*70}\n")
+#     #print(f"\n{'='*70}")
+#     #print(f"TRADE SETUP - {symbol}")
+#     #print(f"{'='*70}")
+#     #print(f"Signal: {signal.upper()}")
+#     #print(f"Entry Price: {price:.5f}")
+#     #print(f"Stop Loss: {sl:.5f} (Distance: {sl_dist_pips:.1f} pips)")
+#     #print(f"Take Profit: {tp:.5f} (Distance: {tp_dist_pips:.1f} pips)")
+#     #print(f"Position Size: {lot_size:.2f} lots")
+#     #print(f"Contract Size: {contract_size:,.0f}")
+#     #print(f"Pip Value/Lot: ${pip_value_per_lot:.2f}")
+#     #print(f"Expected RISK: ${actual_risk:.2f} (Target: ${risk_amount:.2f})")
+#     #print(f"Expected REWARD: ${actual_reward:.2f} (Target: ${reward_amount:.2f})")
+#     #print(f"Risk/Reward Ratio: 1:{actual_reward/actual_risk:.2f}")
+#     #print(f"ATR(14): {current_atr:.5f} | ATR Buffer (1.5×): {atr_buffer:.5f}")
+#     #print(f"{'='*70}\n")
 
 #     # Try different filling modes
 #     filling_modes = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK]
@@ -858,25 +862,25 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 #         # Check if result is None
 #         if result is None:
 #             error = mt5.last_error()
-#             print(f"Order send failed (returned None) with {filling_type}")
-#             print(f"MT5 Error: {error}")
+#             #print(f"Order send failed (returned None) with {filling_type}")
+#             #print(f"MT5 Error: {error}")
 #             continue
         
 #         if result.retcode == mt5.TRADE_RETCODE_DONE:
-#             print(f"{signal.upper()} trade placed successfully!")
-#             print(f"  Order Ticket: {result.order}")
-#             print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-#             print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-#             print(f"  RSI: {curr_candle['rsi']:.2f}")
+#             #print(f"{signal.upper()} trade placed successfully!")
+#             #print(f"  Order Ticket: {result.order}")
+#             #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+#             #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+#             #print(f"  RSI: {curr_candle['rsi']:.2f}")
 #             return
 #         elif result.retcode == 10018:
-#             print(f"Market is closed for {symbol}")
+#             #print(f"Market is closed for {symbol}")
 #             return
 #         elif result.retcode != 10030:
-#             print(f"Order failed: {result.retcode} - {result.comment}")
+#             #print(f"Order failed: {result.retcode} - {result.comment}")
 #             return
     
-#     print("Order failed with all filling modes.")
+#     #print("Order failed with all filling modes.")
 
 
 # def is_market_open(symbol: str) -> bool:
@@ -927,27 +931,27 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
     
 #     # Check for existing position
 #     if check_existing_position(symbol):
-#         print(f"[{symbol}] Already have open position - skipping")
+#         #print(f"[{symbol}] Already have open position - skipping")
 #         return
     
 #     # Get data
 #     df = get_candle_data(symbol, timeframe, n=100)
 #     if df is None or len(df) < 52:
-#         print(f"[{symbol}] Insufficient data")
+#         #print(f"[{symbol}] Insufficient data")
 #         return
     
 #     # Detect signal (with RSI filter)
 #     signal, curr_candle, df_with_emas = detect_ema_crossover(df)
     
 #     if signal == "neutral":
-#         print(f"[{symbol}] No valid signal")
+#         #print(f"[{symbol}] No valid signal")
 #         return
     
-#     print(f"\n[{symbol}]  {signal.upper()} CROSSOVER DETECTED (RSI CONFIRMED)!")
-#     print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-#     print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-#     print(f"  RSI: {curr_candle['rsi']:.2f}")
-#     print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
+#     #print(f"\n[{symbol}]  {signal.upper()} CROSSOVER DETECTED (RSI CONFIRMED)!")
+#     #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+#     #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+#     #print(f"  RSI: {curr_candle['rsi']:.2f}")
+#     #print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
 #           f"L={curr_candle['low']:.5f}, C={curr_candle['close']:.5f}")
     
 #     # Place trade with risk-based position sizing
@@ -964,16 +968,16 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 
 # currency_pair_list = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "USDCAD"]
 
-# print("=" * 123)
-# print("EMA CROSSOVER + RSI FILTER STRATEGY (RISK-BASED POSITION SIZING)")
-# print("=" * 123)
-# print(f"Account Balance: ${ACCOUNT_BALANCE}")
-# print(f"Risk per Trade: ${RISK_PER_TRADE} ({RISK_PER_TRADE/ACCOUNT_BALANCE*100:.1f}% of balance)")
-# print(f"Reward per Trade: ${REWARD_PER_TRADE} (1:{REWARD_PER_TRADE/RISK_PER_TRADE:.0f} R/R)")
-# print("Strategy: 21/51 EMA on 5-Min Chart + RSI(14)")
-# print("Entry: Bullish (RSI >= 60) | Bearish (RSI <= 40)")
-# print("Stop Loss: Candle High/Low +/- 1.5× ATR(14)")
-# print("=" * 123)
+# #print("=" * 123)
+# #print("EMA CROSSOVER + RSI FILTER STRATEGY (RISK-BASED POSITION SIZING)")
+# #print("=" * 123)
+# #print(f"Account Balance: ${ACCOUNT_BALANCE}")
+# #print(f"Risk per Trade: ${RISK_PER_TRADE} ({RISK_PER_TRADE/ACCOUNT_BALANCE*100:.1f}% of balance)")
+# #print(f"Reward per Trade: ${REWARD_PER_TRADE} (1:{REWARD_PER_TRADE/RISK_PER_TRADE:.0f} R/R)")
+# #print("Strategy: 21/51 EMA on 5-Min Chart + RSI(14)")
+# #print("Entry: Bullish (RSI >= 60) | Bearish (RSI <= 40)")
+# #print("Stop Loss: Candle High/Low +/- 1.5× ATR(14)")
+# #print("=" * 123)
 
 # connect_mt5(portable=True)  # Use portable=False if path issues
 
@@ -982,12 +986,12 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
     
 #     while True:
 #         current_time = datetime.now()
-#         print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
+#         #print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
         
 #         for pair in currency_pair_list:
 #             try:
 #                 if not is_market_open(pair):
-#                     print(f"[{pair}] Market not open - skipping")
+#                     #print(f"[{pair}] Market not open - skipping")
 #                     continue
                 
 #                 # Get current candle time
@@ -1003,17 +1007,17 @@ with position sizing based on risk amount ($5 risk, $10 profit per trade).
 #                         last_check[pair] = current_candle_time
                 
 #             except Exception as e:
-#                 print(f"[{pair}] Error: {e}")
+#                 #print(f"[{pair}] Error: {e}")
 #                 import traceback
-#                 traceback.print_exc()
+#                 traceback.#print_exc()
 #                 continue
         
 #         # Wait for next check (check every 60 seconds)
-#         print("\n" + "-" * 123)
+#         #print("\n" + "-" * 123)
 #         time.sleep(60)
 
 # except KeyboardInterrupt:
-#     print("\n\nStopping strategy...")
+#     #print("\n\nStopping strategy...")
 
 # finally:
 #     shutdown_mt5()
@@ -1043,7 +1047,7 @@ with 1 lot size as default.
 #         # mt5_path = os.getenv('MT5_PATH', mt5_path)
         
 #         if not os.path.exists(mt5_path):
-#             print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
+#             #print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
 #             portable = False
     
 #     if portable:
@@ -1068,16 +1072,16 @@ with 1 lot size as default.
     
 #     account_info = mt5.account_info()
 #     if account_info:
-#         print("✓ Connected to MT5")
-#         print(f"  Account: {account_info.login}")
-#         print(f"  Balance: ${account_info.balance}")
+#         #print("✓ Connected to MT5")
+#         #print(f"  Account: {account_info.login}")
+#         #print(f"  Balance: ${account_info.balance}")
 #     else:
-#         print("✓ Connected to MT5")
+#         #print("✓ Connected to MT5")
 
 
 # def shutdown_mt5():
 #     mt5.shutdown()
-#     print("MT5 disconnected")
+#     #print("MT5 disconnected")
 
 
 # def get_candle_data(symbol="EURUSD", timeframe=mt5.TIMEFRAME_M5, n=100):
@@ -1143,10 +1147,10 @@ with 1 lot size as default.
     
 #     # Check if crossover occurred but RSI filter not met
 #     if prev['ema_21'] <= prev['ema_51'] and curr['ema_21'] > curr['ema_51']:
-#         print(f"  ℹ Bullish crossover detected but RSI {curr['rsi']:.2f} < {rsi_threshold_bullish} (rejected)")
+#         #print(f"  ℹ Bullish crossover detected but RSI {curr['rsi']:.2f} < {rsi_threshold_bullish} (rejected)")
     
 #     if prev['ema_21'] >= prev['ema_51'] and curr['ema_21'] < curr['ema_51']:
-#         print(f"  ℹ Bearish crossover detected but RSI {curr['rsi']:.2f} > {rsi_threshold_bearish} (rejected)")
+#         #print(f"  ℹ Bearish crossover detected but RSI {curr['rsi']:.2f} > {rsi_threshold_bearish} (rejected)")
     
 #     return "neutral", curr, df
 
@@ -1174,23 +1178,23 @@ with 1 lot size as default.
 #     TP: 2x SL distance
 #     """
 #     if signal not in ["bullish", "bearish"]:
-#         print("No trade signal (neutral) — skipping trade.")
+#         #print("No trade signal (neutral) — skipping trade.")
 #         return
 
 #     # Get symbol info
 #     symbol_info = mt5.symbol_info(symbol)
 #     if symbol_info is None:
-#         print(f"Failed to get symbol info for {symbol}")
+#         #print(f"Failed to get symbol info for {symbol}")
 #         return
     
 #     if not symbol_info.visible:
 #         if not mt5.symbol_select(symbol, True):
-#             print(f"Failed to add {symbol} to Market Watch")
+#             #print(f"Failed to add {symbol} to Market Watch")
 #             return
 
 #     tick = mt5.symbol_info_tick(symbol)
 #     if tick is None:
-#         print(f"Failed to get tick for {symbol}")
+#         #print(f"Failed to get tick for {symbol}")
 #         return
     
 #     # Entry price
@@ -1202,7 +1206,7 @@ with 1 lot size as default.
 #     current_atr = curr_candle['atr'] if 'atr' in curr_candle else df['atr'].iloc[-1]
     
 #     if pd.isna(current_atr) or current_atr <= 0:
-#         print(f"⚠ Invalid ATR value: {current_atr}, cannot place trade")
+#         #print(f"⚠ Invalid ATR value: {current_atr}, cannot place trade")
 #         return
     
 #     # ATR buffer (1.5 × ATR)
@@ -1226,17 +1230,17 @@ with 1 lot size as default.
     
 #     # min_distance = min_pips * point * 10
     
-#     print(f"Symbol: {symbol}, Point: {point}")
-#     print(f"ATR(14): {current_atr:.5f}")
-#     print(f"ATR Buffer (1.5×): {atr_buffer:.5f}")
-#     print(f"Candle {'Low' if signal == 'bullish' else 'High'}: {curr_candle['low'] if signal == 'bullish' else curr_candle['high']:.5f}")
-#     print(f"Calculated SL: {sl_price:.5f}")
-#     print(f"Calculated SL dist: {sl_dist:.5f}")
-#     # print(f"Minimum required: {min_distance:.5f} ({min_pips} pips)")
+#     #print(f"Symbol: {symbol}, Point: {point}")
+#     #print(f"ATR(14): {current_atr:.5f}")
+#     #print(f"ATR Buffer (1.5×): {atr_buffer:.5f}")
+#     #print(f"Candle {'Low' if signal == 'bullish' else 'High'}: {curr_candle['low'] if signal == 'bullish' else curr_candle['high']:.5f}")
+#     #print(f"Calculated SL: {sl_price:.5f}")
+#     #print(f"Calculated SL dist: {sl_dist:.5f}")
+#     # #print(f"Minimum required: {min_distance:.5f} ({min_pips} pips)")
     
 #     # Use the larger of calculated or minimum
 #     # if sl_dist < min_distance:
-#     #     print("⚠ SL too tight, using minimum distance")
+#     #     #print("⚠ SL too tight, using minimum distance")
 #     #     sl_dist = min_distance
 #     #     # Recalculate SL with minimum distance
 #     #     if signal == "bullish":
@@ -1258,15 +1262,15 @@ with 1 lot size as default.
 #     # Validate stops
 #     if signal == "bullish":
 #         if sl >= price or tp <= price:
-#             print("ERROR: Invalid stop levels for bullish trade")
+#             #print("ERROR: Invalid stop levels for bullish trade")
 #             return
 #     else:
 #         if sl <= price or tp >= price:
-#             print("ERROR: Invalid stop levels for bearish trade")
+#             #print("ERROR: Invalid stop levels for bearish trade")
 #             return
     
-#     print(f"Entry: {price} | SL: {sl} | TP: {tp}")
-#     print(f"Risk/Reward: 1:{tp_dist/sl_dist:.1f}")
+#     #print(f"Entry: {price} | SL: {sl} | TP: {tp}")
+#     #print(f"Risk/Reward: 1:{tp_dist/sl_dist:.1f}")
 
 #     # Try different filling modes
 #     filling_modes = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK]
@@ -1292,25 +1296,25 @@ with 1 lot size as default.
 #         # Check if result is None
 #         if result is None:
 #             error = mt5.last_error()
-#             print(f"✗ Order send failed (returned None) with {filling_type}")
-#             print(f"  MT5 Error: {error}")
+#             #print(f"✗ Order send failed (returned None) with {filling_type}")
+#             #print(f"  MT5 Error: {error}")
 #             continue
         
 #         if result.retcode == mt5.TRADE_RETCODE_DONE:
-#             print(f"✓ {signal.upper()} trade placed successfully!")
-#             print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-#             print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-#             print(f"  RSI: {curr_candle['rsi']:.2f}")
-#             print(f"  ATR: {current_atr:.5f}")
+#             #print(f"✓ {signal.upper()} trade placed successfully!")
+#             #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+#             #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+#             #print(f"  RSI: {curr_candle['rsi']:.2f}")
+#             #print(f"  ATR: {current_atr:.5f}")
 #             return
 #         elif result.retcode == 10018:
-#             print(f"✗ Market is closed for {symbol}")
+#             #print(f"✗ Market is closed for {symbol}")
 #             return
 #         elif result.retcode != 10030:
-#             print(f"✗ Order failed: {result.retcode} - {result.comment}")
+#             #print(f"✗ Order failed: {result.retcode} - {result.comment}")
 #             return
     
-#     print(f"✗ Order failed with all filling modes.")
+#     #print(f"✗ Order failed with all filling modes.")
 
 
 # def is_market_open(symbol: str) -> bool:
@@ -1361,27 +1365,27 @@ with 1 lot size as default.
     
 #     # Check for existing position
 #     if check_existing_position(symbol):
-#         print(f"[{symbol}] Already have open position - skipping")
+#         #print(f"[{symbol}] Already have open position - skipping")
 #         return
     
 #     # Get data
 #     df = get_candle_data(symbol, timeframe, n=100)
 #     if df is None or len(df) < 52:
-#         print(f"[{symbol}] Insufficient data")
+#         #print(f"[{symbol}] Insufficient data")
 #         return
     
 #     # Detect signal (with RSI filter)
 #     signal, curr_candle, df_with_emas = detect_ema_crossover(df)
     
 #     if signal == "neutral":
-#         print(f"[{symbol}] No valid signal")
+#         #print(f"[{symbol}] No valid signal")
 #         return
     
-#     print(f"[{symbol}] {signal.upper()} CROSSOVER DETECTED (RSI CONFIRMED)!")
-#     print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-#     print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-#     print(f"  RSI: {curr_candle['rsi']:.2f}")
-#     print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
+#     #print(f"[{symbol}] {signal.upper()} CROSSOVER DETECTED (RSI CONFIRMED)!")
+#     #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+#     #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+#     #print(f"  RSI: {curr_candle['rsi']:.2f}")
+#     #print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
 #           f"L={curr_candle['low']:.5f}, C={curr_candle['close']:.5f}")
     
 #     # Place trade
@@ -1392,11 +1396,11 @@ with 1 lot size as default.
 
 # currency_pair_list = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "USDCAD"]
 
-# print("=" * 60)
-# print("EMA CROSSOVER + RSI FILTER STRATEGY")
-# print("21/51 EMA on 5-Min Chart + RSI(14)")
-# print("Bullish: RSI >= 60 | Bearish: RSI <= 40")
-# print("=" * 60)
+# #print("=" * 60)
+# #print("EMA CROSSOVER + RSI FILTER STRATEGY")
+# #print("21/51 EMA on 5-Min Chart + RSI(14)")
+# #print("Bullish: RSI >= 60 | Bearish: RSI <= 40")
+# #print("=" * 60)
 
 # connect_mt5(portable=True)  # Use portable=False if path issues
 
@@ -1405,12 +1409,12 @@ with 1 lot size as default.
     
 #     while True:
 #         current_time = datetime.now()
-#         print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
+#         #print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
         
 #         for pair in currency_pair_list:
 #             try:
 #                 if not is_market_open(pair):
-#                     print(f"[{pair}] Market not open - skipping")
+#                     #print(f"[{pair}] Market not open - skipping")
 #                     continue
                 
 #                 # Get current candle time
@@ -1424,15 +1428,15 @@ with 1 lot size as default.
 #                         last_check[pair] = current_candle_time
                 
 #             except Exception as e:
-#                 print(f"[{pair}] Error: {e}")
+#                 #print(f"[{pair}] Error: {e}")
 #                 continue
         
 #         # Wait for next check (check every 30 seconds)
-#         print("\n" + "-" * 100)
+#         #print("\n" + "-" * 100)
 #         time.sleep(60)
 
 # except KeyboardInterrupt:
-#     print("\n\nStopping strategy...")
+#     #print("\n\nStopping strategy...")
 
 # finally:
 #     shutdown_mt5()
@@ -1462,7 +1466,7 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
 #         # mt5_path = os.getenv('MT5_PATH', mt5_path)
         
 #         if not os.path.exists(mt5_path):
-#             print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
+#             #print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
 #             portable = False
     
 #     if portable:
@@ -1487,16 +1491,16 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
     
 #     account_info = mt5.account_info()
 #     if account_info:
-#         print("✓ Connected to MT5")
-#         print(f"  Account: {account_info.login}")
-#         print(f"  Balance: ${account_info.balance}")
+#         #print("✓ Connected to MT5")
+#         #print(f"  Account: {account_info.login}")
+#         #print(f"  Balance: ${account_info.balance}")
 #     else:
-#         print("✓ Connected to MT5")
+#         #print("✓ Connected to MT5")
 
 
 # def shutdown_mt5():
 #     mt5.shutdown()
-#     print("MT5 disconnected")
+#     #print("MT5 disconnected")
 
 
 # def get_candle_data(symbol="EURUSD", timeframe=mt5.TIMEFRAME_M5, n=100):
@@ -1562,10 +1566,10 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
     
 #     # Check if crossover occurred but RSI filter not met
 #     if prev['ema_21'] <= prev['ema_51'] and curr['ema_21'] > curr['ema_51']:
-#         print(f"  ℹ Bullish crossover detected but RSI {curr['rsi']:.2f} < {rsi_threshold_bullish} (rejected)")
+#         #print(f"  ℹ Bullish crossover detected but RSI {curr['rsi']:.2f} < {rsi_threshold_bullish} (rejected)")
     
 #     if prev['ema_21'] >= prev['ema_51'] and curr['ema_21'] < curr['ema_51']:
-#         print(f"  ℹ Bearish crossover detected but RSI {curr['rsi']:.2f} > {rsi_threshold_bearish} (rejected)")
+#         #print(f"  ℹ Bearish crossover detected but RSI {curr['rsi']:.2f} > {rsi_threshold_bearish} (rejected)")
     
 #     return "neutral", curr, df
 
@@ -1577,23 +1581,23 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
 #     TP: 2x SL distance
 #     """
 #     if signal not in ["bullish", "bearish"]:
-#         print("No trade signal (neutral) — skipping trade.")
+#         #print("No trade signal (neutral) — skipping trade.")
 #         return
 
 #     # Get symbol info
 #     symbol_info = mt5.symbol_info(symbol)
 #     if symbol_info is None:
-#         print(f"Failed to get symbol info for {symbol}")
+#         #print(f"Failed to get symbol info for {symbol}")
 #         return
     
 #     if not symbol_info.visible:
 #         if not mt5.symbol_select(symbol, True):
-#             print(f"Failed to add {symbol} to Market Watch")
+#             #print(f"Failed to add {symbol} to Market Watch")
 #             return
 
 #     tick = mt5.symbol_info_tick(symbol)
 #     if tick is None:
-#         print(f"Failed to get tick for {symbol}")
+#         #print(f"Failed to get tick for {symbol}")
 #         return
     
 #     # Entry price
@@ -1618,13 +1622,13 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
     
 #     min_distance = min_pips * point * 10
     
-#     print(f"Symbol: {symbol}, Point: {point}")
-#     print(f"Calculated SL dist: {sl_dist:.5f} (from candle {'low' if signal == 'bullish' else 'high'})")
-#     print(f"Minimum required: {min_distance:.5f} ({min_pips} pips)")
+#     #print(f"Symbol: {symbol}, Point: {point}")
+#     #print(f"Calculated SL dist: {sl_dist:.5f} (from candle {'low' if signal == 'bullish' else 'high'})")
+#     #print(f"Minimum required: {min_distance:.5f} ({min_pips} pips)")
     
 #     # Use the larger of calculated or minimum
 #     if sl_dist < min_distance:
-#         print("⚠ SL too tight, using minimum distance")
+#         #print("⚠ SL too tight, using minimum distance")
 #         sl_dist = min_distance
     
 #     # TP is 2x SL distance
@@ -1641,15 +1645,15 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
 #     # Validate stops
 #     if signal == "bullish":
 #         if sl >= price or tp <= price:
-#             print("ERROR: Invalid stop levels for bullish trade")
+#             #print("ERROR: Invalid stop levels for bullish trade")
 #             return
 #     else:
 #         if sl <= price or tp >= price:
-#             print("ERROR: Invalid stop levels for bearish trade")
+#             #print("ERROR: Invalid stop levels for bearish trade")
 #             return
     
-#     print(f"Entry: {price} | SL: {sl} | TP: {tp}")
-#     print(f"Risk/Reward: 1:{tp_dist/sl_dist:.1f}")
+#     #print(f"Entry: {price} | SL: {sl} | TP: {tp}")
+#     #print(f"Risk/Reward: 1:{tp_dist/sl_dist:.1f}")
 
 #     # Try different filling modes
 #     filling_modes = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK]
@@ -1673,19 +1677,19 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
 #         result = mt5.order_send(request)
 
 #         if result.retcode == mt5.TRADE_RETCODE_DONE:
-#             print(f"✓ {signal.upper()} trade placed successfully!")
-#             print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-#             print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-#             print(f"  RSI: {curr_candle['rsi']:.2f}")
+#             #print(f"✓ {signal.upper()} trade placed successfully!")
+#             #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+#             #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+#             #print(f"  RSI: {curr_candle['rsi']:.2f}")
 #             return
 #         elif result.retcode == 10018:
-#             print(f"✗ Market is closed for {symbol}")
+#             #print(f"✗ Market is closed for {symbol}")
 #             return
 #         elif result.retcode != 10030:
-#             print(f"✗ Order failed: {result.retcode} - {result.comment}")
+#             #print(f"✗ Order failed: {result.retcode} - {result.comment}")
 #             return
     
-#     print(f"✗ Order failed with all filling modes. Last: {result.retcode} - {result.comment}")
+#     #print(f"✗ Order failed with all filling modes. Last: {result.retcode} - {result.comment}")
 
 
 # def is_market_open(symbol: str) -> bool:
@@ -1736,27 +1740,27 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
     
 #     # Check for existing position
 #     if check_existing_position(symbol):
-#         print(f"[{symbol}] Already have open position - skipping")
+#         #print(f"[{symbol}] Already have open position - skipping")
 #         return
     
 #     # Get data
 #     df = get_candle_data(symbol, timeframe, n=100)
 #     if df is None or len(df) < 52:
-#         print(f"[{symbol}] Insufficient data")
+#         #print(f"[{symbol}] Insufficient data")
 #         return
     
 #     # Detect signal (with RSI filter)
 #     signal, curr_candle, df_with_emas = detect_ema_crossover(df)
     
 #     if signal == "neutral":
-#         print(f"[{symbol}] No valid signal")
+#         #print(f"[{symbol}] No valid signal")
 #         return
     
-#     print(f"[{symbol}] {signal.upper()} CROSSOVER DETECTED (RSI CONFIRMED)!")
-#     print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-#     print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-#     print(f"  RSI: {curr_candle['rsi']:.2f}")
-#     print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
+#     #print(f"[{symbol}] {signal.upper()} CROSSOVER DETECTED (RSI CONFIRMED)!")
+#     #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+#     #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+#     #print(f"  RSI: {curr_candle['rsi']:.2f}")
+#     #print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
 #           f"L={curr_candle['low']:.5f}, C={curr_candle['close']:.5f}")
     
 #     # Place trade
@@ -1767,11 +1771,11 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
 
 # currency_pair_list = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "USDCAD"]
 
-# print("=" * 60)
-# print("EMA CROSSOVER + RSI FILTER STRATEGY")
-# print("21/51 EMA on 5-Min Chart + RSI(14)")
-# print("Bullish: RSI >= 60 | Bearish: RSI <= 40")
-# print("=" * 60)
+# #print("=" * 60)
+# #print("EMA CROSSOVER + RSI FILTER STRATEGY")
+# #print("21/51 EMA on 5-Min Chart + RSI(14)")
+# #print("Bullish: RSI >= 60 | Bearish: RSI <= 40")
+# #print("=" * 60)
 
 # connect_mt5(portable=True)  # Use portable=False if path issues
 
@@ -1780,12 +1784,12 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
     
 #     while True:
 #         current_time = datetime.now()
-#         print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
+#         #print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
         
 #         for pair in currency_pair_list:
 #             try:
 #                 if not is_market_open(pair):
-#                     print(f"[{pair}] Market not open - skipping")
+#                     #print(f"[{pair}] Market not open - skipping")
 #                     continue
                 
 #                 # Get current candle time
@@ -1799,15 +1803,15 @@ This below script is for 21 EMA crossover to the 51 EMA and also check for the R
 #                         last_check[pair] = current_candle_time
                 
 #             except Exception as e:
-#                 print(f"[{pair}] Error: {e}")
+#                 #print(f"[{pair}] Error: {e}")
 #                 continue
         
 #         # Wait for next check (check every 30 seconds)
-#         print("\n" + "-" * 60)
+#         #print("\n" + "-" * 60)
 #         time.sleep(30)
 
 # except KeyboardInterrupt:
-#     print("\n\nStopping strategy...")
+#     #print("\n\nStopping strategy...")
 
 # finally:
 #     shutdown_mt5()
@@ -1836,7 +1840,7 @@ This below script is for 21 EMA crossover to the 51 EMA
 #         # mt5_path = os.getenv('MT5_PATH', mt5_path)
         
 #         if not os.path.exists(mt5_path):
-#             print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
+#             #print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
 #             portable = False
     
 #     if portable:
@@ -1861,16 +1865,16 @@ This below script is for 21 EMA crossover to the 51 EMA
     
 #     account_info = mt5.account_info()
 #     if account_info:
-#         print("✓ Connected to MT5")
-#         print(f"  Account: {account_info.login}")
-#         print(f"  Balance: ${account_info.balance}")
+#         #print("✓ Connected to MT5")
+#         #print(f"  Account: {account_info.login}")
+#         #print(f"  Balance: ${account_info.balance}")
 #     else:
-#         print("✓ Connected to MT5")
+#         #print("✓ Connected to MT5")
 
 
 # def shutdown_mt5():
 #     mt5.shutdown()
-#     print("MT5 disconnected")
+#     #print("MT5 disconnected")
 
 
 # def get_candle_data(symbol="EURUSD", timeframe=mt5.TIMEFRAME_M5, n=100):
@@ -1926,23 +1930,23 @@ This below script is for 21 EMA crossover to the 51 EMA
 #     TP: 2x SL distance
 #     """
 #     if signal not in ["bullish", "bearish"]:
-#         print("No trade signal (neutral) — skipping trade.")
+#         #print("No trade signal (neutral) — skipping trade.")
 #         return
 
 #     # Get symbol info
 #     symbol_info = mt5.symbol_info(symbol)
 #     if symbol_info is None:
-#         print(f"Failed to get symbol info for {symbol}")
+#         #print(f"Failed to get symbol info for {symbol}")
 #         return
     
 #     if not symbol_info.visible:
 #         if not mt5.symbol_select(symbol, True):
-#             print(f"Failed to add {symbol} to Market Watch")
+#             #print(f"Failed to add {symbol} to Market Watch")
 #             return
 
 #     tick = mt5.symbol_info_tick(symbol)
 #     if tick is None:
-#         print(f"Failed to get tick for {symbol}")
+#         #print(f"Failed to get tick for {symbol}")
 #         return
     
 #     # Entry price
@@ -1967,13 +1971,13 @@ This below script is for 21 EMA crossover to the 51 EMA
     
 #     min_distance = min_pips * point * 10
     
-#     print(f"Symbol: {symbol}, Point: {point}")
-#     print(f"Calculated SL dist: {sl_dist:.5f} (from candle {'low' if signal == 'bullish' else 'high'})")
-#     print(f"Minimum required: {min_distance:.5f} ({min_pips} pips)")
+#     #print(f"Symbol: {symbol}, Point: {point}")
+#     #print(f"Calculated SL dist: {sl_dist:.5f} (from candle {'low' if signal == 'bullish' else 'high'})")
+#     #print(f"Minimum required: {min_distance:.5f} ({min_pips} pips)")
     
 #     # Use the larger of calculated or minimum
 #     if sl_dist < min_distance:
-#         print("⚠ SL too tight, using minimum distance")
+#         #print("⚠ SL too tight, using minimum distance")
 #         sl_dist = min_distance
     
 #     # TP is 2x SL distance
@@ -1990,15 +1994,15 @@ This below script is for 21 EMA crossover to the 51 EMA
 #     # Validate stops
 #     if signal == "bullish":
 #         if sl >= price or tp <= price:
-#             print("ERROR: Invalid stop levels for bullish trade")
+#             #print("ERROR: Invalid stop levels for bullish trade")
 #             return
 #     else:
 #         if sl <= price or tp >= price:
-#             print("ERROR: Invalid stop levels for bearish trade")
+#             #print("ERROR: Invalid stop levels for bearish trade")
 #             return
     
-#     print(f"Entry: {price} | SL: {sl} | TP: {tp}")
-#     print(f"Risk/Reward: 1:{tp_dist/sl_dist:.1f}")
+#     #print(f"Entry: {price} | SL: {sl} | TP: {tp}")
+#     #print(f"Risk/Reward: 1:{tp_dist/sl_dist:.1f}")
 
 #     # Try different filling modes
 #     filling_modes = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK]
@@ -2022,18 +2026,18 @@ This below script is for 21 EMA crossover to the 51 EMA
 #         result = mt5.order_send(request)
 
 #         if result.retcode == mt5.TRADE_RETCODE_DONE:
-#             print(f"✓ {signal.upper()} trade placed successfully!")
-#             print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-#             print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+#             #print(f"✓ {signal.upper()} trade placed successfully!")
+#             #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+#             #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
 #             return
 #         elif result.retcode == 10018:
-#             print(f"✗ Market is closed for {symbol}")
+#             #print(f"✗ Market is closed for {symbol}")
 #             return
 #         elif result.retcode != 10030:
-#             print(f"✗ Order failed: {result.retcode} - {result.comment}")
+#             #print(f"✗ Order failed: {result.retcode} - {result.comment}")
 #             return
     
-#     print(f"✗ Order failed with all filling modes. Last: {result.retcode} - {result.comment}")
+#     #print(f"✗ Order failed with all filling modes. Last: {result.retcode} - {result.comment}")
 
 
 # def is_market_open(symbol: str) -> bool:
@@ -2084,26 +2088,26 @@ This below script is for 21 EMA crossover to the 51 EMA
     
 #     # Check for existing position
 #     if check_existing_position(symbol):
-#         print(f"[{symbol}] Already have open position - skipping")
+#         #print(f"[{symbol}] Already have open position - skipping")
 #         return
     
 #     # Get data
 #     df = get_candle_data(symbol, timeframe, n=100)
 #     if df is None or len(df) < 52:
-#         print(f"[{symbol}] Insufficient data")
+#         #print(f"[{symbol}] Insufficient data")
 #         return
     
 #     # Detect signal
 #     signal, curr_candle, df_with_emas = detect_ema_crossover(df)
     
 #     if signal == "neutral":
-#         print(f"[{symbol}] No crossover signal")
+#         #print(f"[{symbol}] No crossover signal")
 #         return
     
-#     print(f"[{symbol}] 🎯 {signal.upper()} CROSSOVER DETECTED!")
-#     print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
-#     print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-#     print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
+#     #print(f"[{symbol}] 🎯 {signal.upper()} CROSSOVER DETECTED!")
+#     #print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
+#     #print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
+#     #print(f"  Candle: O={curr_candle['open']:.5f}, H={curr_candle['high']:.5f}, "
 #           f"L={curr_candle['low']:.5f}, C={curr_candle['close']:.5f}")
     
 #     # Place trade
@@ -2114,9 +2118,9 @@ This below script is for 21 EMA crossover to the 51 EMA
 
 # currency_pair_list = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "USDCAD"]
 
-# print("=" * 60)
-# print("EMA CROSSOVER STRATEGY (21/51 EMA on 5-Min Chart)")
-# print("=" * 60)
+# #print("=" * 60)
+# #print("EMA CROSSOVER STRATEGY (21/51 EMA on 5-Min Chart)")
+# #print("=" * 60)
 
 # connect_mt5(portable=True)  # Use portable=False if path issues
 
@@ -2125,12 +2129,12 @@ This below script is for 21 EMA crossover to the 51 EMA
     
 #     while True:
 #         current_time = datetime.now()
-#         print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
+#         #print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Scanning for signals...")
         
 #         for pair in currency_pair_list:
 #             try:
 #                 if not is_market_open(pair):
-#                     print(f"[{pair}] Market not open - skipping")
+#                     #print(f"[{pair}] Market not open - skipping")
 #                     continue
                 
 #                 # Get current candle time
@@ -2144,15 +2148,15 @@ This below script is for 21 EMA crossover to the 51 EMA
 #                         last_check[pair] = current_candle_time
                 
 #             except Exception as e:
-#                 print(f"[{pair}] Error: {e}")
+#                 #print(f"[{pair}] Error: {e}")
 #                 continue
         
 #         # Wait for next check (check every 30 seconds)
-#         print("\n" + "-" * 60)
+#         #print("\n" + "-" * 60)
 #         time.sleep(30)
 
 # except KeyboardInterrupt:
-#     print("\n\nStopping strategy...")
+#     #print("\n\nStopping strategy...")
 
 # finally:
 #     shutdown_mt5()
