@@ -306,13 +306,15 @@ for i in range(201, len(df)):
                 # For bullish trades: both M5 and M30 RSI must be >= threshold
                 if df_m30 is not None:
                     bullish = m5_rsi >= RSI_BULLISH_THRESHOLD and m30_rsi >= RSI_BULLISH_THRESHOLD
+                    # bullish = m30_rsi >= RSI_BULLISH_THRESHOLD
                 else:
-                    bullish = m5_rsi >= RSI_BULLISH_THRESHOLD
+                    bullish = m5_rsi >= RSI_BULLISH_THRESHOLD 
             
             if bearish:
                 # For bearish trades: both M5 and M30 RSI must be <= threshold
                 if df_m30 is not None:
                     bearish = m5_rsi <= RSI_BEARISH_THRESHOLD and m30_rsi <= RSI_BEARISH_THRESHOLD
+                    # bearish = m30_rsi <= RSI_BEARISH_THRESHOLD
                 else:
                     bearish = m5_rsi <= RSI_BEARISH_THRESHOLD
     

@@ -223,14 +223,16 @@ def detect_ema_crossover(symbol):
             bearish = False
         else:
             if bullish:
-                if m5_rsi >= RSI_BULLISH_THRESHOLD and m30_rsi >= RSI_BULLISH_THRESHOLD:
+                if m30_rsi >= RSI_BULLISH_THRESHOLD:
+                # if m5_rsi >= RSI_BULLISH_THRESHOLD and m30_rsi >= RSI_BULLISH_THRESHOLD:
                     print(f"  ✓ [{symbol}] RSI Filter PASSED - M5: {m5_rsi:.1f}, M30: {m30_rsi:.1f}")
                 else:
                     print(f"  ✗ [{symbol}] RSI Filter FAILED - M5: {m5_rsi:.1f}, M30: {m30_rsi:.1f} (need >= {RSI_BULLISH_THRESHOLD})")
                     bullish = False
             
             if bearish:
-                if m5_rsi <= RSI_BEARISH_THRESHOLD and m30_rsi <= RSI_BEARISH_THRESHOLD:
+                if m30_rsi <= RSI_BEARISH_THRESHOLD:
+                # if m5_rsi <= RSI_BEARISH_THRESHOLD and m30_rsi <= RSI_BEARISH_THRESHOLD:
                     print(f"  ✓ [{symbol}] RSI Filter PASSED - M5: {m5_rsi:.1f}, M30: {m30_rsi:.1f}")
                 else:
                     print(f"  ✗ [{symbol}] RSI Filter FAILED - M5: {m5_rsi:.1f}, M30: {m30_rsi:.1f} (need <= {RSI_BEARISH_THRESHOLD})")
