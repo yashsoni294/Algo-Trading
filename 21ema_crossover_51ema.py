@@ -8,14 +8,20 @@ Strategy Rules:
 3. Take Profit: NONE - ride the trend until SL is hit
 4. Position Management: Update SL every minute to follow 51 EMA
 5. Optional Filters: 200 EMA, RSI (M5 + M30)
+
+Heartbeat Trade (Algo Health Check):
+- Fires ONCE per hour
+- Opens a $1239 risk BUY trade on EURUSD (skipped if one is already open)
+- Force-closes the trade after exactly 60 seconds
+- Purpose: Confirms MT5 connectivity and order execution are working
 """
 
 import MetaTrader5 as mt5
 import pandas as pd
 from datetime import datetime, timezone
 import time
+import threading
 from apscheduler.schedulers.blocking import BlockingScheduler
-from apscheduler.triggers.cron import CronTrigger
 import os
 from dotenv import load_dotenv
 
@@ -34,17 +40,30 @@ CURRENCY_PAIRS = ["GBPUSD", "EURUSD", "XAUUSD"]
 TIMEFRAME = mt5.TIMEFRAME_M5
 
 # Strategy Filters (matching backtest config)
-REQUIRE_200_EMA = False  # Set to True to require price above/below 200 EMA
-REQUIRE_RSI_FILTER = True  # Set to True to enable RSI filter
-RSI_BULLISH_THRESHOLD = 60  # RSI must be >= this for bullish trades
-RSI_BEARISH_THRESHOLD = 40  # RSI must be <= this for bearish trades
-SL_BUFFER_PIPS = 2  # Buffer in pips for SL (prevents premature stops)
+REQUIRE_200_EMA = False
+REQUIRE_RSI_FILTER = True
+RSI_BULLISH_THRESHOLD = 60
+RSI_BEARISH_THRESHOLD = 40
+SL_BUFFER_PIPS = 2
 
-# Magic Number (unique identifier for this strategy)
+# Magic Number (unique identifier for strategy trades)
 MAGIC_NUMBER = 234003
+
+# ===================== HEARTBEAT CONFIGURATION =====================
+
+HEARTBEAT_MAGIC            = 234099  # Completely separate from strategy trades
+HEARTBEAT_SYMBOL           = "EURUSD"
+HEARTBEAT_RISK             = 1239  # USD risk amount
+HEARTBEAT_SL_PIPS          = 10      # Fixed 10-pip SL (1:1 → TP also 10 pips)
+HEARTBEAT_DURATION_SECONDS = 60      # Force-close after this many seconds
+HEARTBEAT_INTERVAL_MINUTES = 60       # Fire every N minutes
+
+# Tracks the last time a heartbeat trade was opened (explicit, inspectable)
+last_heartbeat_time = None
 
 # Tracking
 last_check = {}
+
 
 # ===================== CONNECTION FUNCTIONS =====================
 
@@ -55,7 +74,7 @@ def connect_mt5(portable=True):
         if not os.path.exists(mt5_path):
             print(f"Warning: MT5 not found at {mt5_path}, trying default initialization")
             portable = False
-    
+
     if portable:
         if not mt5.initialize(
             path=mt5_path,
@@ -75,7 +94,7 @@ def connect_mt5(portable=True):
         ):
             error = mt5.last_error()
             raise RuntimeError(f"MT5 initialize() failed: {error}")
-    
+
     account_info = mt5.account_info()
     if account_info:
         print("✓ Connected to MT5")
@@ -96,12 +115,10 @@ def shutdown_mt5():
 # ===================== INDICATOR FUNCTIONS =====================
 
 def ema(series, period):
-    """Calculate Exponential Moving Average"""
     return series.ewm(span=period, adjust=False).mean()
 
 
 def rsi(series, period=14):
-    """Calculate Relative Strength Index"""
     delta = series.diff()
     gain = delta.clip(lower=0).rolling(period).mean()
     loss = -delta.clip(upper=0).rolling(period).mean()
@@ -110,220 +127,158 @@ def rsi(series, period=14):
 
 
 def calculate_pip_value(symbol, price):
-    """Calculate pip value for position sizing"""
     symbol_info = mt5.symbol_info(symbol)
     if symbol_info is None:
-        return 10  # Default fallback
-    
-    point = symbol_info.point
-    
-    if "JPY" in symbol:
-        pip_size = 0.01
-    else:
-        pip_size = 0.0001
-    
-    # For USD pairs
+        return 10
+
+    pip_size = 0.01 if "JPY" in symbol else 0.0001
+
     if symbol.endswith("USD"):
         pip_value_per_lot = pip_size * symbol_info.trade_contract_size
-    elif symbol.startswith("USD"):
-        pip_value_per_lot = (pip_size / price) * symbol_info.trade_contract_size
     else:
         pip_value_per_lot = (pip_size / price) * symbol_info.trade_contract_size
-    
+
     return pip_value_per_lot
 
 
 # ===================== DATA FUNCTIONS =====================
 
 def get_candle_data(symbol, timeframe, n=250):
-    """Get candle data for analysis"""
     rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, n)
     if rates is None or len(rates) == 0:
         return None
-    
     df = pd.DataFrame(rates)
     df['time'] = pd.to_datetime(df['time'], unit='s')
     return df
 
 
 def calculate_indicators(df, include_rsi=False):
-    """Calculate all indicators (21 EMA, 51 EMA, 200 EMA, optional RSI)"""
-    df['ema_21'] = ema(df['close'], 21)
-    df['ema_51'] = ema(df['close'], 51)
+    df['ema_21']  = ema(df['close'], 21)
+    df['ema_51']  = ema(df['close'], 51)
     df['ema_200'] = ema(df['close'], 200)
-    
     if include_rsi:
         df['rsi'] = rsi(df['close'], 14)
-    
     return df
 
 
 def get_m30_rsi(symbol):
-    """Get M30 RSI value"""
     rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M30, 0, 50)
     if rates is None or len(rates) == 0:
         return None
-    
     df_m30 = pd.DataFrame(rates)
     df_m30['time'] = pd.to_datetime(df_m30['time'], unit='s')
-    df_m30['rsi'] = rsi(df_m30['close'], 14)
-    
+    df_m30['rsi']  = rsi(df_m30['close'], 14)
     return df_m30.iloc[-1]['rsi']
 
 
 # ===================== SIGNAL DETECTION =====================
 
 def detect_ema_crossover(symbol):
-    """
-    Detect EMA crossover signals with optional filters
-    Returns: signal ('bullish', 'bearish', 'neutral'), current candle data, dataframe
-    """
-    # Get M5 data
     df = get_candle_data(symbol, TIMEFRAME, n=250)
     if df is None or len(df) < 201:
         return "neutral", None, None
-    
-    # Calculate indicators
-    df = calculate_indicators(df, include_rsi=REQUIRE_RSI_FILTER)
-    
+
+    df   = calculate_indicators(df, include_rsi=REQUIRE_RSI_FILTER)
     curr = df.iloc[-1]
     prev = df.iloc[-2]
-    
-    # Detect crossovers
-    bullish = (
-        prev['ema_21'] <= prev['ema_51'] and
-        curr['ema_21'] > curr['ema_51']
-    )
-    
-    bearish = (
-        prev['ema_21'] >= prev['ema_51'] and
-        curr['ema_21'] < curr['ema_51']
-    )
-    
-    # Apply 200 EMA filter if enabled
+
+    bullish = (prev['ema_21'] <= prev['ema_51'] and curr['ema_21'] > curr['ema_51'])
+    bearish = (prev['ema_21'] >= prev['ema_51'] and curr['ema_21'] < curr['ema_51'])
+
     if REQUIRE_200_EMA:
         if bullish:
             bullish = curr['ema_21'] > curr['ema_200'] and curr['ema_51'] > curr['ema_200']
             if not bullish:
                 print(f"  ℹ [{symbol}] Bullish crossover rejected: below 200 EMA")
-        
         if bearish:
             bearish = curr['ema_21'] < curr['ema_200'] and curr['ema_51'] < curr['ema_200']
             if not bearish:
                 print(f"  ℹ [{symbol}] Bearish crossover rejected: above 200 EMA")
-    
-    # Apply RSI filter if enabled
+
     if REQUIRE_RSI_FILTER and (bullish or bearish):
-        m5_rsi = curr['rsi']
+        m5_rsi  = curr['rsi']
         m30_rsi = get_m30_rsi(symbol)
-        
+
         if pd.isna(m5_rsi) or m30_rsi is None or pd.isna(m30_rsi):
             print(f"  ⚠ [{symbol}] RSI data unavailable, skipping trade")
-            bullish = False
-            bearish = False
+            bullish = bearish = False
         else:
             if bullish:
                 if m30_rsi >= RSI_BULLISH_THRESHOLD:
-                # if m5_rsi >= RSI_BULLISH_THRESHOLD and m30_rsi >= RSI_BULLISH_THRESHOLD:
                     print(f"  ✓ [{symbol}] RSI Filter PASSED - M5: {m5_rsi:.1f}, M30: {m30_rsi:.1f}")
                 else:
                     print(f"  ✗ [{symbol}] RSI Filter FAILED - M5: {m5_rsi:.1f}, M30: {m30_rsi:.1f} (need >= {RSI_BULLISH_THRESHOLD})")
                     bullish = False
-            
             if bearish:
                 if m30_rsi <= RSI_BEARISH_THRESHOLD:
-                # if m5_rsi <= RSI_BEARISH_THRESHOLD and m30_rsi <= RSI_BEARISH_THRESHOLD:
                     print(f"  ✓ [{symbol}] RSI Filter PASSED - M5: {m5_rsi:.1f}, M30: {m30_rsi:.1f}")
                 else:
                     print(f"  ✗ [{symbol}] RSI Filter FAILED - M5: {m5_rsi:.1f}, M30: {m30_rsi:.1f} (need <= {RSI_BEARISH_THRESHOLD})")
                     bearish = False
-    
-    if bullish:
-        return "bullish", curr, df
-    elif bearish:
-        return "bearish", curr, df
-    else:
-        return "neutral", curr, df
+
+    if bullish:   return "bullish", curr, df
+    elif bearish: return "bearish", curr, df
+    else:         return "neutral",  curr, df
 
 
 # ===================== POSITION MANAGEMENT =====================
 
 def get_current_51_ema(symbol):
-    """Get current 51 EMA value"""
     df = get_candle_data(symbol, TIMEFRAME, n=100)
     if df is None or len(df) < 51:
         return None
-    
     df = calculate_indicators(df, include_rsi=False)
     return df.iloc[-1]['ema_51']
 
 
 def update_trailing_stop(position):
-    """
-    Update position's stop loss to current 51 EMA value
-    Only updates if it's favorable (moves SL in profit direction)
-    """
-    symbol = position.symbol
-    ticket = position.ticket
+    symbol       = position.symbol
+    ticket       = position.ticket
     position_type = position.type
-    current_sl = position.sl
-    entry_price = position.price_open
-    
-    # Get current 51 EMA
+    current_sl   = position.sl
+
     current_51_ema = get_current_51_ema(symbol)
     if current_51_ema is None:
         print(f"  ⚠ [{symbol}] Could not calculate 51 EMA")
         return False
-    
+
     symbol_info = mt5.symbol_info(symbol)
     if symbol_info is None:
         return False
-    
-    # Add buffer
-    point = symbol_info.point
+
+    point          = symbol_info.point
     pip_multiplier = 10 if "JPY" not in symbol else 1
-    buffer = SL_BUFFER_PIPS * point * pip_multiplier
-    
-    # Calculate new SL with buffer
+    buffer         = SL_BUFFER_PIPS * point * pip_multiplier
+
     if position_type == mt5.ORDER_TYPE_BUY:
-        # For buy positions, SL should be below 51 EMA
         new_sl = current_51_ema - buffer
-        
-        # Only update if new SL is higher than current SL (trailing up)
         if new_sl > current_sl:
             new_sl = round(new_sl, symbol_info.digits)
         else:
-            return False  # Don't update
-            
-    else:  # SELL position
-        # For sell positions, SL should be above 51 EMA
+            return False
+    else:
         new_sl = current_51_ema + buffer
-        
-        # Only update if new SL is lower than current SL (trailing down)
         if new_sl < current_sl:
             new_sl = round(new_sl, symbol_info.digits)
         else:
-            return False  # Don't update
-    
-    # Modify position
+            return False
+
     request = {
-        "action": mt5.TRADE_ACTION_SLTP,
+        "action":   mt5.TRADE_ACTION_SLTP,
         "position": ticket,
-        "symbol": symbol,
-        "sl": float(new_sl),
-        "tp": position.tp,
-        "magic": MAGIC_NUMBER,
+        "symbol":   symbol,
+        "sl":       float(new_sl),
+        "tp":       position.tp,
+        "magic":    MAGIC_NUMBER,
     }
-    
+
     result = mt5.order_send(request)
-    
     if result is None:
-        error = mt5.last_error()
-        print(f"  ✗ [{symbol}] Failed to update SL: {error}")
+        print(f"  ✗ [{symbol}] Failed to update SL: {mt5.last_error()}")
         return False
-    
+
     if result.retcode == mt5.TRADE_RETCODE_DONE:
-        direction = "↑" if position_type == mt5.ORDER_TYPE_BUY else "↓"
+        direction  = "↑" if position_type == mt5.ORDER_TYPE_BUY else "↓"
         pips_moved = abs(new_sl - current_sl) / (point * pip_multiplier)
         print(f"  ✓ [{symbol}] SL updated: {current_sl:.5f} → {new_sl:.5f} {direction} (+{pips_moved:.1f} pips)")
         return True
@@ -333,151 +288,307 @@ def update_trailing_stop(position):
 
 
 def update_all_trailing_stops():
-    """Update trailing stops for all open positions"""
     positions = mt5.positions_get()
-    
     if positions is None or len(positions) == 0:
         return
-    
-    # Filter positions by our magic number
+
+    # Only touch strategy positions, never heartbeat positions
     our_positions = [p for p in positions if p.magic == MAGIC_NUMBER]
-    
-    if len(our_positions) == 0:
+    if not our_positions:
         return
-    
+
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔄 Updating trailing stops ({len(our_positions)} position(s))...")
-    
     for position in our_positions:
         update_trailing_stop(position)
+
+
+# ===================== HEARTBEAT TRADE LOGIC =====================
+
+def heartbeat_has_open_position():
+    """Return True if a heartbeat trade is currently open."""
+    positions = mt5.positions_get(symbol=HEARTBEAT_SYMBOL)
+    if not positions:
+        return False
+    return any(p.magic == HEARTBEAT_MAGIC for p in positions)
+
+
+def close_heartbeat_position(ticket):
+    """
+    Market-close a specific heartbeat position by ticket.
+    Tries all filling modes to maximise broker compatibility.
+    """
+    position = None
+    all_pos  = mt5.positions_get(symbol=HEARTBEAT_SYMBOL)
+    if all_pos:
+        matches = [p for p in all_pos if p.ticket == ticket]
+        position = matches[0] if matches else None
+
+    if position is None:
+        # Already closed (hit SL/TP on its own — that's fine)
+        print(f"  ℹ [HEARTBEAT] Position {ticket} already closed (hit SL/TP)")
+        return True
+
+    symbol_info = mt5.symbol_info(HEARTBEAT_SYMBOL)
+    tick        = mt5.symbol_info_tick(HEARTBEAT_SYMBOL)
+    if symbol_info is None or tick is None:
+        print(f"  ✗ [HEARTBEAT] Cannot get symbol info to close position")
+        return False
+
+    # Close direction is opposite to open direction
+    if position.type == mt5.ORDER_TYPE_BUY:
+        close_price = tick.bid
+        close_type  = mt5.ORDER_TYPE_SELL
+    else:
+        close_price = tick.ask
+        close_type  = mt5.ORDER_TYPE_BUY
+
+    filling_modes = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK]
+
+    for filling in filling_modes:
+        request = {
+            "action":       mt5.TRADE_ACTION_DEAL,
+            "symbol":       HEARTBEAT_SYMBOL,
+            "volume":       position.volume,
+            "type":         close_type,
+            "position":     ticket,
+            "price":        close_price,
+            "deviation":    20,
+            "magic":        HEARTBEAT_MAGIC,
+            "comment":      "Heartbeat close",
+            "type_time":    mt5.ORDER_TIME_GTC,
+            "type_filling": filling,
+        }
+        result = mt5.order_send(request)
+        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+            print(f"  ✅ [HEARTBEAT] Position {ticket} force-closed after {HEARTBEAT_DURATION_SECONDS}s")
+            return True
+
+    print(f"  ✗ [HEARTBEAT] Failed to close position {ticket}: {result.retcode if result else mt5.last_error()}")
+    return False
+
+
+def _delayed_close(ticket):
+    """
+    Runs in a background thread.
+    Waits HEARTBEAT_DURATION_SECONDS then closes the heartbeat trade.
+    """
+    time.sleep(HEARTBEAT_DURATION_SECONDS)
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⏱ [HEARTBEAT] 60s elapsed — closing position {ticket}...")
+    close_heartbeat_position(ticket)
+
+
+def run_heartbeat_trade():
+    """
+    Called every minute by the scheduler.
+    Opens a $1239-risk BUY trade on EURUSD every HEARTBEAT_INTERVAL_MINUTES (2),
+    then spawns a thread that force-closes it after HEARTBEAT_DURATION_SECONDS (60s).
+
+    Two independent guards:
+      1. Explicit time check  → has 2 minutes elapsed since last heartbeat?
+      2. Position check       → is a heartbeat trade already open?
+    """
+    global last_heartbeat_time
+
+    print(f"\n{'='*70}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💓 HEARTBEAT CHECK")
+    print(f"{'='*70}")
+
+    # ── Guard 1: explicit interval check ────────────────────────────────────
+    now = datetime.now()
+    if last_heartbeat_time is not None:
+        elapsed_minutes = (now - last_heartbeat_time).total_seconds() / 60
+        if elapsed_minutes < HEARTBEAT_INTERVAL_MINUTES:
+            remaining = HEARTBEAT_INTERVAL_MINUTES - elapsed_minutes
+            print(f"  ℹ [HEARTBEAT] {elapsed_minutes:.1f}m since last heartbeat "
+                  f"— next in {remaining:.1f}m (interval: {HEARTBEAT_INTERVAL_MINUTES}m)")
+            return
+    else:
+        print(f"  ℹ [HEARTBEAT] First run — no previous heartbeat recorded")
+
+    # ── Guard 2: skip if a position is already open ─────────────────────────
+    if heartbeat_has_open_position():
+        print(f"  ℹ [HEARTBEAT] Position already open — skipping")
+        return
+
+    # ── Market check ────────────────────────────────────────────────────────
+    symbol_info = mt5.symbol_info(HEARTBEAT_SYMBOL)
+    tick        = mt5.symbol_info_tick(HEARTBEAT_SYMBOL)
+
+    if symbol_info is None or tick is None or tick.ask <= 0:
+        print(f"  ✗ [HEARTBEAT] Market data unavailable for {HEARTBEAT_SYMBOL}")
+        return
+
+    if symbol_info.trade_mode != mt5.SYMBOL_TRADE_MODE_FULL:
+        print(f"  ✗ [HEARTBEAT] {HEARTBEAT_SYMBOL} market is not fully open")
+        return
+
+    # ── Position sizing ─────────────────────────────────────────────────────
+    point          = symbol_info.point
+    pip_multiplier = 10  # EURUSD has no JPY
+    pip_value      = calculate_pip_value(HEARTBEAT_SYMBOL, tick.ask)
+
+    sl_price_dist  = HEARTBEAT_SL_PIPS * point * pip_multiplier   # price units
+    lot_size       = HEARTBEAT_RISK / (HEARTBEAT_SL_PIPS * pip_value)
+    lot_size       = max(symbol_info.volume_min,
+                         min(round(lot_size, 2), symbol_info.volume_max))
+
+    entry = tick.ask
+    sl    = round(entry - sl_price_dist, symbol_info.digits)   # BUY → SL below
+    tp    = round(entry + sl_price_dist, symbol_info.digits)   # 1:1 → TP above
+
+    actual_risk = lot_size * HEARTBEAT_SL_PIPS * pip_value
+
+    # ── Stamp the time now (before placing, so interval is always respected) ─
+    last_heartbeat_time = now
+
+    print(f"  Symbol : {HEARTBEAT_SYMBOL}")
+    print(f"  Entry  : {entry:.5f}")
+    print(f"  SL     : {sl:.5f}  (-{HEARTBEAT_SL_PIPS} pips)")
+    print(f"  TP     : {tp:.5f}  (+{HEARTBEAT_SL_PIPS} pips)  [1:1]")
+    print(f"  Size   : {lot_size:.2f} lots")
+    print(f"  Risk   : ${actual_risk:.2f}")
+    print(f"  Close  : Force-closed after {HEARTBEAT_DURATION_SECONDS}s")
+
+    # ── Place order ─────────────────────────────────────────────────────────
+    filling_modes = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK]
+    ticket        = None
+
+    for filling in filling_modes:
+        request = {
+            "action":       mt5.TRADE_ACTION_DEAL,
+            "symbol":       HEARTBEAT_SYMBOL,
+            "volume":       lot_size,
+            "type":         mt5.ORDER_TYPE_BUY,
+            "price":        entry,
+            "sl":           float(sl),
+            "tp":           float(tp),
+            "deviation":    20,
+            "magic":        HEARTBEAT_MAGIC,
+            "comment":      "Heartbeat BUY",
+            "type_time":    mt5.ORDER_TIME_GTC,
+            "type_filling": filling,
+        }
+        result = mt5.order_send(request)
+
+        if result is None:
+            print(f"  ✗ [HEARTBEAT] order_send returned None ({mt5.last_error()})")
+            continue
+
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+            ticket = result.order
+            print(f"  ✅ [HEARTBEAT] Trade opened! Ticket: {ticket}")
+            break
+        elif result.retcode == 10018:
+            print(f"  ✗ [HEARTBEAT] Market closed (10018)")
+            return
+        else:
+            print(f"  ✗ [HEARTBEAT] retcode {result.retcode}: {result.comment}")
+
+    if ticket is None:
+        print(f"  ✗ [HEARTBEAT] Could not open trade with any filling mode")
+        return
+
+    # ── Schedule force-close in background thread ────────────────────────────
+    t = threading.Thread(target=_delayed_close, args=(ticket,), daemon=True)
+    t.start()
+    print(f"  ⏱ [HEARTBEAT] Force-close scheduled in {HEARTBEAT_DURATION_SECONDS}s (thread running)")
 
 
 # ===================== TRADE EXECUTION =====================
 
 def place_ema_trade(symbol, signal, curr_candle):
-    """
-    Place trade based on EMA crossover
-    SL: Initial SL at 51 EMA (will be updated by trailing stop)
-    TP: No TP - ride the trend until SL is hit
-    """
     symbol_info = mt5.symbol_info(symbol)
     if symbol_info is None:
         print(f"  ✗ [{symbol}] Failed to get symbol info")
         return False
-    
+
     if not symbol_info.visible:
         if not mt5.symbol_select(symbol, True):
             print(f"  ✗ [{symbol}] Failed to add to Market Watch")
             return False
-    
+
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
         print(f"  ✗ [{symbol}] Failed to get tick data")
         return False
-    
-    # Entry price
-    price = tick.ask if signal == "bullish" else tick.bid
+
+    price      = tick.ask if signal == "bullish" else tick.bid
     order_type = mt5.ORDER_TYPE_BUY if signal == "bullish" else mt5.ORDER_TYPE_SELL
-    
-    # Initial SL at 51 EMA
-    ema_51 = curr_candle['ema_51']
-    
-    # Add buffer to SL
-    point = symbol_info.point
+
+    ema_51         = curr_candle['ema_51']
+    point          = symbol_info.point
     pip_multiplier = 10 if "JPY" not in symbol else 1
-    buffer = SL_BUFFER_PIPS * point * pip_multiplier
-    
-    if signal == "bullish":
-        sl_price = ema_51 - buffer
-    else:
-        sl_price = ema_51 + buffer
-    
-    sl = round(sl_price, symbol_info.digits)
-    
-    # Validate SL
-    if signal == "bullish":
-        if sl >= price:
-            print(f"  ✗ [{symbol}] Invalid SL for bullish trade (SL >= Entry)")
-            return False
-    else:
-        if sl <= price:
-            print(f"  ✗ [{symbol}] Invalid SL for bearish trade (SL <= Entry)")
-            return False
-    
-    # Calculate position size based on risk
+    buffer         = SL_BUFFER_PIPS * point * pip_multiplier
+
+    sl_price = ema_51 - buffer if signal == "bullish" else ema_51 + buffer
+    sl       = round(sl_price, symbol_info.digits)
+
+    if signal == "bullish" and sl >= price:
+        print(f"  ✗ [{symbol}] Invalid SL for bullish trade (SL >= Entry)")
+        return False
+    if signal == "bearish" and sl <= price:
+        print(f"  ✗ [{symbol}] Invalid SL for bearish trade (SL <= Entry)")
+        return False
+
     sl_dist_price = abs(price - sl)
-    sl_dist_pips = sl_dist_price / (point * pip_multiplier)
-    
-    pip_value = calculate_pip_value(symbol, price)
-    
+    sl_dist_pips  = sl_dist_price / (point * pip_multiplier)
+    pip_value     = calculate_pip_value(symbol, price)
+
     if sl_dist_pips > 0 and pip_value > 0:
         lot_size = RISK_PER_TRADE / (sl_dist_pips * pip_value)
-        lot_size = round(lot_size, 2)  # Round to 2 decimals
-        
-        # Apply min/max limits
-        if lot_size < symbol_info.volume_min:
-            lot_size = symbol_info.volume_min
-        elif lot_size > symbol_info.volume_max:
-            lot_size = symbol_info.volume_max
+        lot_size = round(lot_size, 2)
+        lot_size = max(symbol_info.volume_min, min(lot_size, symbol_info.volume_max))
     else:
         print(f"  ✗ [{symbol}] Invalid calculation: SL pips={sl_dist_pips:.1f}, pip_value={pip_value:.2f}")
         return False
-    
-    # Calculate actual risk
+
     actual_risk = lot_size * sl_dist_pips * pip_value
-    
-    # Display trade setup
+
     print(f"\n{'='*70}")
     print(f"📊 TRADE SETUP - {symbol}")
     print(f"{'='*70}")
-    print(f"Signal: {signal.upper()}")
-    print(f"Entry Price: {price:.5f}")
-    print(f"Initial Stop Loss: {sl:.5f} (51 EMA: {ema_51:.5f})")
-    print(f"Take Profit: NONE (Ride the trend)")
-    print(f"")
-    print(f"SL Distance: {sl_dist_pips:.1f} pips")
+    print(f"Signal       : {signal.upper()}")
+    print(f"Entry Price  : {price:.5f}")
+    print(f"Stop Loss    : {sl:.5f} (51 EMA: {ema_51:.5f})")
+    print(f"Take Profit  : NONE (Ride the trend)")
+    print(f"SL Distance  : {sl_dist_pips:.1f} pips")
     print(f"Position Size: {lot_size:.2f} lots")
-    print(f"Risk Amount: ${actual_risk:.2f}")
-    print(f"")
-    print(f"21 EMA: {curr_candle['ema_21']:.5f}")
-    print(f"51 EMA: {curr_candle['ema_51']:.5f}")
+    print(f"Risk Amount  : ${actual_risk:.2f}")
+    print(f"21 EMA       : {curr_candle['ema_21']:.5f}")
+    print(f"51 EMA       : {curr_candle['ema_51']:.5f}")
     if REQUIRE_200_EMA:
-        print(f"200 EMA: {curr_candle['ema_200']:.5f}")
+        print(f"200 EMA      : {curr_candle['ema_200']:.5f}")
     if REQUIRE_RSI_FILTER:
-        print(f"RSI (M5): {curr_candle['rsi']:.1f}")
-    print(f"")
-    print(f"NOTE: SL will trail the 51 EMA automatically")
+        print(f"RSI (M5)     : {curr_candle['rsi']:.1f}")
+    print(f"NOTE         : SL will trail the 51 EMA automatically")
     print(f"{'='*70}\n")
-    
-    # Try different filling modes
+
     filling_modes = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK]
-    
+
     for filling_type in filling_modes:
         request = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": symbol,
-            "volume": lot_size,
-            "type": order_type,
-            "price": price,
-            "sl": float(sl),
-            "tp": 0.0,  # No take profit
-            "deviation": 20,
-            "magic": MAGIC_NUMBER,
-            "comment": f"EMA Trail {signal}",
-            "type_time": mt5.ORDER_TIME_GTC,
+            "action":       mt5.TRADE_ACTION_DEAL,
+            "symbol":       symbol,
+            "volume":       lot_size,
+            "type":         order_type,
+            "price":        price,
+            "sl":           float(sl),
+            "tp":           0.0,
+            "deviation":    20,
+            "magic":        MAGIC_NUMBER,
+            "comment":      f"EMA Trail {signal}",
+            "type_time":    mt5.ORDER_TIME_GTC,
             "type_filling": filling_type,
         }
-        
+
         result = mt5.order_send(request)
-        
+
         if result is None:
-            error = mt5.last_error()
-            print(f"  ✗ [{symbol}] Order send failed with {filling_type}: {error}")
+            print(f"  ✗ [{symbol}] Order send failed ({mt5.last_error()})")
             continue
-        
+
         if result.retcode == mt5.TRADE_RETCODE_DONE:
-            print(f"  ✅ [{symbol}] {signal.upper()} trade placed successfully!")
-            print(f"  Order Ticket: {result.order}")
-            print(f"  Position Ticket: {result.deal if hasattr(result, 'deal') else 'N/A'}")
+            print(f"  ✅ [{symbol}] {signal.upper()} trade placed! Ticket: {result.order}")
             return True
         elif result.retcode == 10018:
             print(f"  ✗ [{symbol}] Market is closed")
@@ -486,7 +597,7 @@ def place_ema_trade(symbol, signal, curr_candle):
             print(f"  ✗ [{symbol}] Order failed: {result.retcode} - {result.comment}")
             if filling_type == filling_modes[-1]:
                 return False
-    
+
     print(f"  ✗ [{symbol}] Order failed with all filling modes")
     return False
 
@@ -494,153 +605,133 @@ def place_ema_trade(symbol, signal, curr_candle):
 # ===================== MARKET CHECKS =====================
 
 def is_market_open(symbol):
-    """Check if market is open and tradable"""
     symbol_info = mt5.symbol_info(symbol)
     if symbol_info is None:
         return False
-    
     if symbol_info.trade_mode != mt5.SYMBOL_TRADE_MODE_FULL:
         return False
-    
     if not symbol_info.visible:
         if not mt5.symbol_select(symbol, True):
             return False
-    
+
     tick = mt5.symbol_info_tick(symbol)
-    if tick is None:
+    if tick is None or tick.bid <= 0 or tick.ask <= 0:
         return False
-    
-    if tick.bid <= 0 or tick.ask <= 0:
-        return False
-    
+
     tick_time = datetime.fromtimestamp(tick.time, tz=timezone.utc)
-    now = datetime.now(timezone.utc)
-    
+    now       = datetime.now(timezone.utc)
+
     if (now - tick_time).total_seconds() > 60:
         return False
-    
-    # Avoid rollover period (23:55 - 00:05 UTC)
+
+    # Avoid rollover period (23:55 – 00:05 UTC)
     if (tick_time.hour == 23 and tick_time.minute >= 55) or \
-       (tick_time.hour == 0 and tick_time.minute <= 5):
+       (tick_time.hour == 0  and tick_time.minute <= 5):
         return False
-    
+
     return True
 
 
 def check_existing_position(symbol):
-    """Check if there's already an open position for this symbol"""
     positions = mt5.positions_get(symbol=symbol)
     if positions is None:
         return False
-    
-    # Check if any position is from our strategy
-    for pos in positions:
-        if pos.magic == MAGIC_NUMBER:
-            return True
-    
-    return False
+    return any(p.magic == MAGIC_NUMBER for p in positions)
 
 
 # ===================== STRATEGY EXECUTION =====================
 
 def run_strategy_for_symbol(symbol):
-    """Run the EMA crossover strategy for a single symbol"""
     try:
-        # Check if market is open
         if not is_market_open(symbol):
             return
-        
-        # Check if we already have a position
         if check_existing_position(symbol):
             return
-        
-        # Check for new candle (avoid duplicate signals)
+
         df = get_candle_data(symbol, TIMEFRAME, n=2)
         if df is None:
             return
-        
+
         current_candle_time = df.iloc[-1]['time']
-        
-        # Only analyze if this is a new candle
+
         if symbol in last_check and last_check[symbol] == current_candle_time:
             return
-        
+
         last_check[symbol] = current_candle_time
-        
-        # Detect signal
-        signal, curr_candle, df_with_emas = detect_ema_crossover(symbol)
-        
+
+        signal, curr_candle, _ = detect_ema_crossover(symbol)
+
         if signal == "neutral":
             return
-        
-        # Signal detected!
+
         print(f"\n🎯 [{symbol}] {signal.upper()} CROSSOVER DETECTED!")
         print(f"  21 EMA: {curr_candle['ema_21']:.5f}")
         print(f"  51 EMA: {curr_candle['ema_51']:.5f}")
-        
-        # Place trade
+
         place_ema_trade(symbol, signal, curr_candle)
-        
+
     except Exception as e:
         print(f"  ✗ [{symbol}] Error: {e}")
 
 
 def scan_markets():
-    """Scan all currency pairs for trading signals"""
+    """Called every minute: scan for EMA signals + update trailing stops."""
     current_time = datetime.now()
     print(f"\n{'='*70}")
     print(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 🔍 Scanning markets...")
     print(f"{'='*70}")
-    
-    # Scan for new signals
+
     for pair in CURRENCY_PAIRS:
         run_strategy_for_symbol(pair)
-    
-    # Update trailing stops for existing positions
+
     update_all_trailing_stops()
-    
+
     print(f"\n{'='*70}")
-    print(f"Scan complete. Next scan in 30 second.")
+    print(f"Scan complete. Next scan in ~1 minute.")
     print(f"{'='*70}\n")
 
 
 # ===================== MAIN EXECUTION =====================
 
 def main():
-    """Main execution function"""
     print("=" * 70)
     print("21/51 EMA CROSSOVER STRATEGY - LIVE TRADING")
-    print("WITH 51 EMA TRAILING STOP LOSS")
+    print("WITH 51 EMA TRAILING STOP LOSS + HOURLY HEARTBEAT")
     print("=" * 70)
-    print(f"Account Balance: ${ACCOUNT_BALANCE}")
-    print(f"Risk per Trade: ${RISK_PER_TRADE} ({RISK_PER_TRADE/ACCOUNT_BALANCE*100:.1f}% of balance)")
-    print(f"Timeframe: M5 (5-Minute Chart)")
-    print(f"")
-    print(f"Strategy Configuration:")
-    print(f"  Entry: 21 EMA crosses 51 EMA")
-    print(f"  Stop Loss: 51 EMA (Trailing)")
-    print(f"  Take Profit: NONE - Ride the trend")
-    print(f"  SL Buffer: {SL_BUFFER_PIPS} pips")
+    print(f"Account Balance : ${ACCOUNT_BALANCE}")
+    print(f"Risk per Trade  : ${RISK_PER_TRADE} ({RISK_PER_TRADE/ACCOUNT_BALANCE*100:.1f}% of balance)")
+    print(f"Timeframe       : M5")
+    print()
+    print(f"Strategy Config:")
+    print(f"  Entry         : 21 EMA crosses 51 EMA")
+    print(f"  Stop Loss     : 51 EMA (Trailing)")
+    print(f"  Take Profit   : NONE - ride the trend")
+    print(f"  SL Buffer     : {SL_BUFFER_PIPS} pips")
     print(f"  200 EMA Filter: {'ENABLED' if REQUIRE_200_EMA else 'DISABLED'}")
-    print(f"  RSI Filter: {'ENABLED' if REQUIRE_RSI_FILTER else 'DISABLED'}")
+    print(f"  RSI Filter    : {'ENABLED' if REQUIRE_RSI_FILTER else 'DISABLED'}")
     if REQUIRE_RSI_FILTER:
-        print(f"    - Bullish RSI: >= {RSI_BULLISH_THRESHOLD}")
-        print(f"    - Bearish RSI: <= {RSI_BEARISH_THRESHOLD}")
-        print(f"    - M30 RSI: Required")
-    print(f"")
-    print(f"Trading Pairs: {', '.join(CURRENCY_PAIRS)}")
-    print(f"Magic Number: {MAGIC_NUMBER}")
+        print(f"    Bullish RSI >= {RSI_BULLISH_THRESHOLD}  |  Bearish RSI <= {RSI_BEARISH_THRESHOLD}")
+        print(f"    M30 RSI required")
+    print()
+    print(f"Heartbeat Config:")
+    print(f"  Symbol        : {HEARTBEAT_SYMBOL}")
+    print(f"  Risk          : ${HEARTBEAT_RISK}")
+    print(f"  SL/TP         : {HEARTBEAT_SL_PIPS} pips each (1:1)")
+    print(f"  Fires         : Every {HEARTBEAT_INTERVAL_MINUTES} minutes (skipped if already open)")
+    print(f"  Auto-close    : {HEARTBEAT_DURATION_SECONDS}s after opening")
+    print(f"  Magic Number  : {HEARTBEAT_MAGIC}")
+    print()
+    print(f"Trading Pairs   : {', '.join(CURRENCY_PAIRS)}")
+    print(f"Strategy Magic  : {MAGIC_NUMBER}")
     print("=" * 70)
-    
-    # Connect to MT5
+
     if not connect_mt5(portable=True):
         print("\n❌ Failed to connect to MT5")
         return
-    
-    # Create scheduler
+
     scheduler = BlockingScheduler()
-    
-    # Run every minute to check for signals AND update trailing stops
+
+    # Every minute at :30 seconds → scan markets + update trailing stops
     scheduler.add_job(
         scan_markets,
         trigger='cron',
@@ -650,17 +741,28 @@ def main():
         name='Scan markets and update trailing stops',
         max_instances=1
     )
-    
+
+    # Every minute at :45s → heartbeat function decides internally whether
+    # 2 minutes have elapsed before opening a trade
+    scheduler.add_job(
+        run_heartbeat_trade,
+        trigger='cron',
+        minute='*',
+        second='45',
+        id='heartbeat',
+        name='Heartbeat trade (every 2 min)',
+        max_instances=1
+    )
+
     print("\n✓ Strategy started successfully!")
-    print("  • Scans for EMA crossover signals every minute")
-    print("  • Updates all trailing stops to 51 EMA every minute")
+    print("  • Scans for EMA crossover signals every minute (:30s)")
+    print("  • Updates all trailing stops every minute")
+    print(f"  • Fires a ${HEARTBEAT_RISK} heartbeat BUY on {HEARTBEAT_SYMBOL} every {HEARTBEAT_INTERVAL_MINUTES} minutes (:45s mark)")
+    print(f"  • Heartbeat auto-closes after {HEARTBEAT_DURATION_SECONDS}s")
     print("  • Press Ctrl+C to stop\n")
-    
+
     try:
-        # Run initial scan
-        scan_markets()
-        
-        # Start scheduler
+        scan_markets()          # Immediate first scan on startup
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
         print("\n\n⚠ Stopping strategy...")
