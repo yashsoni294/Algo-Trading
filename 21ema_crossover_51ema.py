@@ -600,7 +600,7 @@ def scan_markets():
     update_all_trailing_stops()
     
     print(f"\n{'='*70}")
-    print(f"Scan complete. Next scan in 1 minute.")
+    print(f"Scan complete. Next scan in 30 second.")
     print(f"{'='*70}\n")
 
 
