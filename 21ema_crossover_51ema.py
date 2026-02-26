@@ -735,8 +735,8 @@ def main():
     scheduler.add_job(
         scan_markets,
         trigger='cron',
-        minute='*',
-        second='30',
+        minute='*/5',
+        second='0',
         id='market_scanner',
         name='Scan markets and update trailing stops',
         max_instances=1
@@ -744,15 +744,15 @@ def main():
 
     # Every minute at :45s → heartbeat function decides internally whether
     # 2 minutes have elapsed before opening a trade
-    scheduler.add_job(
-        run_heartbeat_trade,
-        trigger='cron',
-        minute='*',
-        second='45',
-        id='heartbeat',
-        name='Heartbeat trade (every 2 min)',
-        max_instances=1
-    )
+    # scheduler.add_job(
+    #     run_heartbeat_trade,
+    #     trigger='cron',
+    #     minute='*',
+    #     second='45',
+    #     id='heartbeat',
+    #     name='Heartbeat trade (every 2 min)',
+    #     max_instances=1
+    # )
 
     print("\n✓ Strategy started successfully!")
     print("  • Scans for EMA crossover signals every minute (:30s)")
