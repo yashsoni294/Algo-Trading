@@ -131,6 +131,14 @@ def calculate_pip_value(symbol, price):
     if symbol_info is None:
         return 10
 
+    # XAUUSD (Gold) — special case
+    if symbol == "XAUUSD":
+        # 1 pip = $0.10, contract size = 100 oz
+        # pip_value per lot = 0.10 * 100 = $10 ... BUT check your broker!
+        # Most brokers: pip_value = $1.00 per 0.01 move per lot
+        pip_size = 0.01
+        return pip_size * symbol_info.trade_contract_size  # = 0.01 * 100 = $1.00
+
     pip_size = 0.01 if "JPY" in symbol else 0.0001
 
     if symbol.endswith("USD"):
@@ -246,9 +254,16 @@ def update_trailing_stop(position):
     if symbol_info is None:
         return False
 
-    point          = symbol_info.point
-    pip_multiplier = 10 if "JPY" not in symbol else 1
-    buffer         = SL_BUFFER_PIPS * point * pip_multiplier
+    point = symbol_info.point
+
+    if "JPY" in symbol:
+        pip_multiplier = 1
+    elif symbol == "XAUUSD":
+        pip_multiplier = 1  # Gold: 1 pip = 1 point ($0.01)
+    else:
+        pip_multiplier = 10  # Standard forex pairs
+
+    buffer = SL_BUFFER_PIPS * point * pip_multiplier
 
     if position_type == mt5.ORDER_TYPE_BUY:
         new_sl = current_51_ema - buffer
@@ -517,7 +532,14 @@ def place_ema_trade(symbol, signal, curr_candle):
 
     ema_51         = curr_candle['ema_51']
     point          = symbol_info.point
-    pip_multiplier = 10 if "JPY" not in symbol else 1
+
+    if "JPY" in symbol:
+        pip_multiplier = 1
+    elif symbol == "XAUUSD":
+        pip_multiplier = 1  # Gold: 1 pip = 1 point ($0.01)
+    else:
+        pip_multiplier = 10  # Standard forex pairs
+
     buffer         = SL_BUFFER_PIPS * point * pip_multiplier
 
     sl_price = ema_51 - buffer if signal == "bullish" else ema_51 + buffer
